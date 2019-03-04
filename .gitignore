@@ -1,5 +1,11 @@
+## Folders
+old_analyser/
+parser_branch_log
+test_parser/
+
 ## Text files
 *.txt
+*.log
 
 ## Core latex/pdflatex auxiliary files:
 *.aux
