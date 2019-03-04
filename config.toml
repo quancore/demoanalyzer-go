@@ -1,0 +1,22 @@
+# Config file for analyser
+
+title = "Analyser config"
+
+[owner]
+name = "Baran Nama"
+dob = 2019-01-09T15:55:00-08:00
+
+[log]
+path = "log.txt"
+# whether log method name
+is_method_name = false
+
+[output]
+features = "Name,Pistol_Rounds_Won_Percentage,HS_Percentage,Clutches_Won,ADR,FPR,APR,K_D_Diff_Round,Flash_Assists_Round,Blind_Players_Killed_Round,Blind_Kills,Grenade_Damage_Round,Fire_Damage_Round,Time_Flashing_Opponents_Round,Accuracy,Num_Times_Trader,Num_Times_Tradee,KAST,Won"
+
+[test]
+demofile_path = "/home/baran/Desktop/demo_files/working_demos"
+log_prefix = "log"
+output_prefix = "stat"
+concurrent_worker = 1
+stdout = false

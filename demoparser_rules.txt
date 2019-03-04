@@ -1,0 +1,10 @@
+I am analyzing the demo files of cs go however it is a mess and it is hard to know which is the real match or a valid event.Here is several rules that I created to get an event is valid or not:
+*Any event before marchStart (matchStartChanged) or after matchEnd is invalid.
+*(round start) A round can be started with a match start or a roundStart
+*(round end) A round can end with roundEnd or scoreUpdated.
+*All events are recorded without dispatch to players.If it is a valid round, all recorded events are dispatched otherwise discharged.
+*The properties of a valid round:
+	-It has to be after a match start.
+	-There should be correct number of team members (5, 5)
+	-It is starting with a round start and end with a round end.
+	-There is at least one playerHurt event occured.
