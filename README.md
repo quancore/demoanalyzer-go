@@ -24,6 +24,8 @@ Simply indicate path of the demofile, path of output file and path of log file a
     go build
     ./demoanalyzer-go --demofilepath natus-vincere-vs-avangar-m2-train.dem --outpath stat.txt --checkanalyzer --logfilepath log.txt
 
+`--checkanalyzer`: Very useful flag for checking the results of analyzer. It is very helpful to find out whether a demo file has been analyzer correctly.
+
 ## Feature request
 
 It is highly appreciated to introduce new game features to summerize players and games better. If you think a feature can add value, you can create a PR with indication of importance of feature and exact definition of it.
