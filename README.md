@@ -24,6 +24,10 @@ Simply indicate path of the demofile, path of output file and path of log file a
     go build
     ./demoanalyzer-go --demofilepath natus-vincere-vs-avangar-m2-train.dem --outpath stat.txt --checkanalyzer --logfilepath log.txt
 
+## Feature request
+
+It is highly appreciated to introduce new game features to summerize players and games better. If you think a feature can add value, you can create a PR with indication of importance of feature and exact definition of it.
+
 ## Bug report
 
 It is highly possible that the analyzer can fail to analyze a demofile. Because demofiles are very messy, there is no guarantee that this analyzer can analyze all kind of demo files. If you encounter an runtime error or get wrong statistics of a player, simply do: 
