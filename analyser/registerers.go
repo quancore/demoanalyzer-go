@@ -10,7 +10,7 @@ import (
 
 // registerNetMessageHandlers register net message handlers
 func (analyser *Analyser) registerNetMessageHandlers() {
-	// Register handler for ConVar updates
+	// Register handler for net messages updates
 	analyser.parser.RegisterNetMessageHandler(func(m *msg.CNETMsg_SetConVar) {
 		for _, cvar := range m.Convars.Cvars {
 			if cvar.Name == "mp_overtime_maxrounds" {
@@ -52,29 +52,6 @@ func (analyser *Analyser) registerMatchEventHandlers() {
 	// mainly needed for reconnected players
 	analyser.parser.RegisterEventHandler(func(e events.PlayerTeamChange) { analyser.handleTeamChange(e) })
 
-	// // Register handler on round end official event
-	// analyser.parser.RegisterEventHandler(func(e events.TeamSideSwitch) {
-	// 	// switch scores
-	// 	// first swap scores if needed
-	// 	mpOvertimeMaxrounds := analyser.NumOvertime
-	// 	nOvertimeRounds := analyser.RoundPlayed - maxRounds
-	// 	if analyser.RoundPlayed == 15 || analyser.RoundPlayed == maxRounds {
-	// 		if !analyser.ScoreSwapped {
-	// 			log.Info("Score has been swapped with team switch")
-	// 			analyser.Tscore, analyser.CTscore = analyser.CTscore, analyser.Tscore
-	// 			analyser.ScoreSwapped = true
-	// 		}
-	// 	} else if nOvertimeRounds > 0 && nOvertimeRounds%mpOvertimeMaxrounds == 0 {
-	// 		if !analyser.ScoreSwapped {
-	// 			log.Info("Score has been swapped with team switch")
-	// 			analyser.Tscore, analyser.CTscore = analyser.CTscore, analyser.Tscore
-	// 			analyser.ScoreSwapped = true
-	// 		}
-	// 	} else { //once score swapped and after swap situation we reset flag
-	// 		analyser.ScoreSwapped = false
-	// 	}
-	// })
-
 	// Register handler on round end official event
 	// registered for testing purpose
 	analyser.parser.RegisterEventHandler(func(e events.IsWarmupPeriodChanged) {
@@ -94,8 +71,8 @@ func (analyser *Analyser) registerMatchEventHandlers() {
 	// **************************************************
 }
 
-// registerEventHandlers register handlers for each needed events
-func (analyser *Analyser) registerEventHandlers() {
+// registerPlayerEventHandlers register handlers for each needed events
+func (analyser *Analyser) registerPlayerEventHandlers() {
 	// ************** player events *********************
 	// Register handler on match start
 	analyser.parser.RegisterEventHandler(func(e events.Kill) { analyser.dispatchPlayerEvents(e) })

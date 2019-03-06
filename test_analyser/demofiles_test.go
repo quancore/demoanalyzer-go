@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	analyser "github.com/quancore/demoanalyzer-go/analyser"
-	utils "github.com/quancore/demoanalyzer-go/common"
+	utils "github.com/quancore/demoanalyzer-go/utils"
 	logging "github.com/sirupsen/logrus"
 
 	"github.com/spf13/viper"

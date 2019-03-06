@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	common "github.com/markus-wa/demoinfocs-golang/common"
-	utils "github.com/quancore/demoanalyzer-go/common"
+	utils "github.com/quancore/demoanalyzer-go/utils"
 	logging "github.com/sirupsen/logrus"
 
 	"github.com/spf13/viper"
@@ -18,11 +18,16 @@ import (
 func (analyser *Analyser) printPlayers() {
 	analyser.log.Info("#########################################")
 
+	teamWon := analyser.getWinnerTeam()
+	gs := analyser.parser.GameState()
+
 	analyser.log.WithFields(logging.Fields{
-		"t score":      analyser.Tscore,
-		"ct score":     analyser.CTscore,
-		"played round": analyser.RoundPlayed,
+		"t score":      analyser.tScore,
+		"ct score":     analyser.ctScore,
+		"winner team":  gs.Team(teamWon).ClanName,
+		"played round": analyser.roundPlayed,
 	}).Info("Match has been finished: ")
+
 	for _, currPlayer := range analyser.getAllPlayers() {
 		if currPlayer.TeamState == nil {
 			analyser.log.WithFields(logging.Fields{
@@ -37,14 +42,19 @@ func (analyser *Analyser) printPlayers() {
 			"name":                  currPlayer.Name,
 			"team":                  currPlayer.TeamState.ClanName,
 			"kill":                  currPlayer.GetNumKills(),
+			"parser kill":           currPlayer.Player.AdditionalPlayerInformation.Kills,
 			"blind kill":            currPlayer.GetBlindKills(),
 			"blinded player killed": currPlayer.GetPlayerBlindedKills(),
 			"hs kll":                currPlayer.GetNumHSKills(),
 			"assist":                currPlayer.GetNumAssists(),
+			"parser assist":         currPlayer.Player.AdditionalPlayerInformation.Assists,
 			"flash assist":          currPlayer.GetFlashAssist(),
 			"death":                 currPlayer.GetNumDeaths(),
+			"parser death":          currPlayer.Player.AdditionalPlayerInformation.Deaths,
 			"clutch won":            currPlayer.GetClutchWon(),
 			"pistol won":            currPlayer.GetPistolRoundWon(),
+			"eco won":               currPlayer.GetEcoRoundWon(),
+			"force buy won":         currPlayer.GetForceBuyRoundWon(),
 			"granade damage":        currPlayer.GetGranadeDamage(),
 			"fire damage":           currPlayer.GetFireDamage(),
 			"time flashing":         currPlayer.GetTimeFlashing(),
@@ -55,8 +65,6 @@ func (analyser *Analyser) printPlayers() {
 			"bomb planted":          currPlayer.GetNumBombPlanted(),
 		}).Info("Player: ")
 	}
-
-	// os.Exit(0)
 }
 
 // printPlayers print player stats after finished the match
@@ -79,18 +87,13 @@ func (analyser *Analyser) writeToFile(path string) {
 	w.WriteByte('\n')
 	w.Flush()
 	gs := analyser.parser.GameState()
-	// get which team won
-	teamWon := common.TeamUnassigned
-	if analyser.Tscore > analyser.CTscore {
-		teamWon = common.TeamTerrorists
-	} else if analyser.Tscore < analyser.CTscore {
-		teamWon = common.TeamCounterTerrorists
-	}
+
+	teamWon := analyser.getWinnerTeam()
 
 	analyser.log.WithFields(logging.Fields{
-		"t score":      analyser.Tscore,
-		"ct score":     analyser.CTscore,
-		"played round": analyser.RoundPlayed,
+		"t score":      analyser.tScore,
+		"ct score":     analyser.ctScore,
+		"played round": analyser.roundPlayed,
 		"winner team":  gs.Team(teamWon).ClanName,
 		"writing path": path,
 	}).Info("Writing to file: ")
@@ -102,9 +105,17 @@ func (analyser *Analyser) writeToFile(path string) {
 				"team": currPlayer.Team,
 			}).Info("Team state is null for player ")
 			continue
+		} else if currPlayer.GetNumKills() <= 0 && currPlayer.GetNumDeaths() <= 0 {
+			analyser.log.WithFields(logging.Fields{
+				"name":      currPlayer.Name,
+				"team":      currPlayer.Team,
+				"num kill":  currPlayer.GetNumKills(),
+				"num death": currPlayer.GetNumDeaths(),
+			}).Info("Player has wrong stat ")
+			continue
 		}
 		// teamState := gs.Team(currPlayer.Team)
-		roundPlayed := float32(analyser.RoundPlayed)
+		roundPlayed := float32(analyser.roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s,", currPlayer.Name))
 
 		var pistolRoundWonPercentage float32

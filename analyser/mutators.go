@@ -2,10 +2,11 @@ package analyser
 
 import (
 	"bufio"
+	"math"
 
 	dem "github.com/markus-wa/demoinfocs-golang"
-	"github.com/markus-wa/demoinfocs-golang/common"
-	"github.com/quancore/demoanalyzer-go/player"
+	p_common "github.com/markus-wa/demoinfocs-golang/common"
+	common "github.com/quancore/demoanalyzer-go/common"
 	logging "github.com/sirupsen/logrus"
 )
 
@@ -24,40 +25,41 @@ func (analyser *Analyser) resetAnalyser() {
 // resetAnalyserVars reset analyser vars
 func (analyser *Analyser) resetAnalyserVars() {
 	// initilize maps for further use
-	analyser.Players = make(map[int64]*player.PPlayer)
-	analyser.DisconnectedPlayers = make(map[int64]*disconnectedTuple)
-	analyser.pendingPlayers = make(map[int64]*disconnectedTuple)
+	analyser.players = make(map[int64]*common.PPlayer)
+	analyser.disconnectedPlayers = make(map[int64]*common.DisconnectedTuple)
 	analyser.NumOvertime = 6
 	analyser.minPlayedRound = 5
-	analyser.RoundPlayed = 0
+	analyser.roundPlayed = 0
 }
 
 // initilizeRoundMaps initilize map vars related a round with empty maps
-func (analyser *Analyser) initilizeRoundMaps(teamT, teamCT []*common.Player, tick int) {
+func (analyser *Analyser) initilizeRoundMaps(teamT, teamCT []*p_common.Player, tick int) {
 	analyser.resetAlivePlayers(teamT, teamCT)
-	analyser.KilledPlayers = make(map[int64][]*killTuples)
-	analyser.KastPlayers = make(map[int64]bool)
+	analyser.killedPlayers = make(map[int64][]*common.KillTuples)
+	analyser.kastPlayers = make(map[int64]bool)
 }
 
 // resetRoundVars reset round based variables
-func (analyser *Analyser) resetRoundVars(teamT, teamCT []*common.Player, tick int) {
+func (analyser *Analyser) resetRoundVars(teamT, teamCT []*p_common.Player, tick int) {
 	analyser.initilizeRoundMaps(teamT, teamCT, tick)
-	analyser.IsBombPlanted = false
-	analyser.IsBombDefusing = false
-	analyser.IsPossibleCLutch = false
-	analyser.Defuser = nil
-	analyser.ClutchPLayer = nil
-	analyser.InRound = true
+	analyser.isBombPlanted = false
+	analyser.isBombDefusing = false
+	analyser.isBombDefused = false
+	analyser.currentRoundType = common.NormalRound
+	analyser.isPossibleClutch = false
+	analyser.defuser = nil
+	analyser.clutchPlayer = nil
+	analyser.inRound = true
 	// will cancelled if true
-	analyser.IsCancelled = false
-	analyser.IsPlayerHurt = false
-	analyser.IsEventHappened = false
+	analyser.isCancelled = false
+	analyser.isPlayerHurt = false
+	analyser.isEventHappened = false
 
 }
 
 // resetRoundVars reset match based variables
 func (analyser *Analyser) resetMatchVars() {
-	// if we are not in half break
+	// first check whether the match has been played for certain number of rounds
 	if !analyser.checkIsMatchValid() {
 		analyser.resetScore()
 		analyser.resetPlayerStates()
@@ -65,7 +67,7 @@ func (analyser *Analyser) resetMatchVars() {
 	} else {
 		analyser.log.WithFields(logging.Fields{
 			"tick":         analyser.getGameTick(),
-			"round played": analyser.RoundPlayed,
+			"round played": analyser.roundPlayed,
 		}).Info("Certain number of match played for this match so it will not be reset")
 	}
 
@@ -73,9 +75,9 @@ func (analyser *Analyser) resetMatchVars() {
 
 // resetScore reset match score and round played
 func (analyser *Analyser) resetScore() {
-	analyser.RoundPlayed = 0
-	analyser.CTscore = 0
-	analyser.Tscore = 0
+	analyser.roundPlayed = 0
+	analyser.ctScore = 0
+	analyser.tScore = 0
 	analyser.log.WithFields(logging.Fields{
 		"tick": analyser.getGameTick(),
 	}).Info("Score has been reset")
@@ -83,15 +85,15 @@ func (analyser *Analyser) resetScore() {
 
 // resetMatchFlags reset match flags
 func (analyser *Analyser) resetMatchFlags() {
-	analyser.MatchStarted = true
-	analyser.MatchEnded = false
-	analyser.ScoreSwapped = false
+	analyser.matchStarted = true
+	analyser.matchEnded = false
+	analyser.scoreSwapped = false
 	analyser.lastScoreSwapped = 0
 	analyser.lastMatchStartedCalled = 0
 	analyser.lastRoundEndCalled = 0
 	analyser.log.WithFields(logging.Fields{
 		"tick":         analyser.getGameTick(),
-		"round played": analyser.RoundPlayed,
+		"round played": analyser.roundPlayed,
 	}).Info("Match flags has been reset")
 }
 
@@ -99,20 +101,19 @@ func (analyser *Analyser) resetMatchFlags() {
 // ######## Analyser state mutators ###########
 
 // deleteAlivePlayer remove alive player from alive container
-func (analyser *Analyser) deleteAlivePlayer(side string, uid int64) bool {
-	if side == "T" {
-		delete(analyser.TAlive, uid)
+func (analyser *Analyser) deleteAlivePlayer(side p_common.Team, uid int64) bool {
+	switch side {
+	case p_common.TeamTerrorists:
+		delete(analyser.tAlive, uid)
 		// after deleteion check clutch situation
 		analyser.checkClutchSituation()
 		return true
-
-	} else if side == "CT" {
-		delete(analyser.CtAlive, uid)
-		// after deletion check clutch situation
+	case p_common.TeamCounterTerrorists:
+		delete(analyser.ctAlive, uid)
+		// after deleteion check clutch situation
 		analyser.checkClutchSituation()
 		return true
-
-	} else {
+	default:
 		analyser.log.WithFields(logging.Fields{
 			"user id": uid,
 		}).Error("Player has no side: ")
@@ -121,24 +122,24 @@ func (analyser *Analyser) deleteAlivePlayer(side string, uid int64) bool {
 }
 
 // resetAlivePlayers reset alive players per round
-func (analyser *Analyser) resetAlivePlayers(teamT, teamCT []*common.Player) {
-	analyser.CtAlive = make(map[int64]*player.PPlayer)
-	analyser.TAlive = make(map[int64]*player.PPlayer)
+func (analyser *Analyser) resetAlivePlayers(teamT, teamCT []*p_common.Player) {
+	analyser.ctAlive = make(map[int64]*common.PPlayer)
+	analyser.tAlive = make(map[int64]*common.PPlayer)
 
 	if teamT != nil && teamCT != nil {
 		// for each terorist
 		for _, currPlayer := range teamT {
-			var NewPPlayer *player.PPlayer
+			var NewPPlayer *common.PPlayer
 			var ok bool
 			uid := currPlayer.SteamID
 			// add non exist players
 			if NewPPlayer, ok = analyser.getPlayerByID(uid, true); !ok {
-				NewPPlayer = player.NewPPlayer(currPlayer)
+				NewPPlayer = common.NewPPlayer(currPlayer)
 				// new player add all player list as well
-				analyser.Players[uid] = NewPPlayer
+				analyser.players[uid] = NewPPlayer
 			}
 			if _, ok = NewPPlayer.GetSide(); ok {
-				analyser.TAlive[uid] = NewPPlayer
+				analyser.tAlive[uid] = NewPPlayer
 				NewPPlayer.NotifyRoundStart()
 			}
 
@@ -146,15 +147,15 @@ func (analyser *Analyser) resetAlivePlayers(teamT, teamCT []*common.Player) {
 
 		// for each ct
 		for _, currPlayer := range teamCT {
-			var NewPPlayer *player.PPlayer
+			var NewPPlayer *common.PPlayer
 			var ok bool
 			uid := currPlayer.SteamID
 			if NewPPlayer, ok = analyser.getPlayerByID(uid, true); !ok {
-				NewPPlayer = player.NewPPlayer(currPlayer)
-				analyser.Players[uid] = NewPPlayer
+				NewPPlayer = common.NewPPlayer(currPlayer)
+				analyser.players[uid] = NewPPlayer
 			}
 			if _, ok = NewPPlayer.GetSide(); ok {
-				analyser.CtAlive[uid] = NewPPlayer
+				analyser.ctAlive[uid] = NewPPlayer
 				NewPPlayer.NotifyRoundStart()
 
 			}
@@ -165,70 +166,10 @@ func (analyser *Analyser) resetAlivePlayers(teamT, teamCT []*common.Player) {
 // resetPlayerStates reset player states
 func (analyser *Analyser) resetPlayerStates() {
 	// for each players
-	for _, currPlayer := range analyser.Players {
+	for _, currPlayer := range analyser.players {
 		currPlayer.ResetPlayerState()
 	}
 }
-
-// // updateScore update and or swap t and ct score
-// func (analyser *Analyser) updateScore(newTscore, newCTscore int) bool {
-// 	if newTscore < 0 || newCTscore < 0 {
-// 		return false
-// 	}
-// 	// we are getting new round number smaller than swap round, so need to swap back
-// 	newRoundPlayed := newTscore + newCTscore
-// 	isScoreSwapped := newRoundPlayed < analyser.lastScoreSwapped
-// 	oldTScore := analyser.Tscore
-// 	oldCTScore := analyser.CTscore
-//
-// 	if !isScoreSwapped && (newTscore == analyser.CTscore && newCTscore == analyser.Tscore) {
-// 		log.WithFields(log.Fields{
-// 			"new t":  newTscore,
-// 			"old t":  oldTScore,
-// 			"new ct": newCTscore,
-// 			"old ct": oldCTScore,
-// 		}).Info("Score has already been swapped")
-// 		return false
-// 	}
-//
-// 	// we are not updating score when we are in half break because the expected
-// 	// behaviour in this period is only swap score.
-// 	// Sometimes there is a score update in half breaks which do the same thing with swap
-// 	// so if we consider this update, we will swap double and it leads to wrong situation
-// 	if utils.Abs(newTscore-oldTScore) < 2 && utils.Abs(newCTscore-oldCTScore) < 2 {
-// 		if !analyser.checkHalfBreak(newTscore, newCTscore) {
-// 			analyser.Tscore = newTscore
-// 			analyser.CTscore = newCTscore
-// 			analyser.RoundPlayed = newRoundPlayed
-//
-// 			log.WithFields(log.Fields{
-// 				"new t":  newTscore,
-// 				"old t":  oldTScore,
-// 				"new ct": newCTscore,
-// 				"old ct": oldCTScore,
-// 			}).Info("Score has been updated")
-//
-// 		}
-//
-// 		analyser.swapScore(newTscore, newCTscore)
-//
-// 		// incase of rolling back a situation where score swap is needed.
-// 		if isScoreSwapped {
-// 			analyser.Tscore, analyser.CTscore = analyser.CTscore, analyser.Tscore
-// 			analyser.lastScoreSwapped = 0
-// 			log.WithFields(log.Fields{
-// 				"new t":  newTscore,
-// 				"old t":  oldTScore,
-// 				"new ct": newCTscore,
-// 				"old ct": oldCTScore,
-// 			}).Info("Score has been swapped back.")
-// 		}
-//
-// 		return true
-// 	}
-//
-// 	return false
-// }
 
 // updateScore update and or swap t and ct score
 func (analyser *Analyser) updateScore(newTscore, newCTscore int, eventType string) bool {
@@ -237,8 +178,8 @@ func (analyser *Analyser) updateScore(newTscore, newCTscore int, eventType strin
 	}
 	// we are getting new round number smaller than swap round, so need to swap back
 	newRoundPlayed := newTscore + newCTscore
-	oldTScore := analyser.Tscore
-	oldCTScore := analyser.CTscore
+	oldTScore := analyser.tScore
+	oldCTScore := analyser.ctScore
 
 	// we are directly emitting all kind of score update event
 	// without checking, because it usually leafds to correct score
@@ -257,9 +198,9 @@ func (analyser *Analyser) updateScore(newTscore, newCTscore int, eventType strin
 	// 	return false
 	// }
 
-	analyser.Tscore = newTscore
-	analyser.CTscore = newCTscore
-	analyser.RoundPlayed = newRoundPlayed
+	analyser.tScore = newTscore
+	analyser.ctScore = newCTscore
+	analyser.roundPlayed = newRoundPlayed
 
 	analyser.log.WithFields(logging.Fields{
 		"new t":      newTscore,
@@ -281,8 +222,8 @@ func (analyser *Analyser) swapScore(newTscore, newCTscore int) {
 	if nROundsPlayed == 15 || nROundsPlayed == maxRounds {
 		if nROundsPlayed > analyser.lastScoreSwapped {
 			analyser.log.Info("Score has been swapped")
-			analyser.Tscore, analyser.CTscore = newCTscore, newTscore
-			analyser.RoundPlayed = nROundsPlayed
+			analyser.tScore, analyser.ctScore = newCTscore, newTscore
+			analyser.roundPlayed = nROundsPlayed
 			analyser.lastScoreSwapped = nROundsPlayed
 		} else {
 			analyser.log.Info("Score has already been swapped")
@@ -290,7 +231,7 @@ func (analyser *Analyser) swapScore(newTscore, newCTscore int) {
 	} else if nOvertimeRounds > 0 && nOvertimeRounds%nOvertimeHalf == 0 {
 		if nROundsPlayed > analyser.lastScoreSwapped {
 			analyser.log.Info("Score has been swapped")
-			analyser.Tscore, analyser.CTscore = newCTscore, newTscore
+			analyser.tScore, analyser.ctScore = newCTscore, newTscore
 			analyser.lastScoreSwapped = nROundsPlayed
 		} else {
 			analyser.log.Info("Score has already been swapped")
@@ -312,30 +253,83 @@ func (analyser *Analyser) setRoundStart(tick int) bool {
 
 	// if the start tick is smaller than current tick, advance
 	for roundNumber, currRound := range analyser.validRounds {
-		validend := currRound.endTick
+		validend := currRound.EndTick
 		// if there is an official end for this round, consider it
-		if currRound.officialEndTick > 0 {
-			validend = currRound.officialEndTick
+		if currRound.OfficialEndTick > 0 {
+			validend = currRound.OfficialEndTick
 		}
 
-		if roundNumber > analyser.RoundPlayed && currRound.startTick <= tick && validend >= tick {
-			analyser.roundStart = currRound.startTick
-			analyser.roundEnd = currRound.endTick
-			analyser.roundOffEnd = currRound.officialEndTick
+		if roundNumber > analyser.roundPlayed && currRound.StartTick <= tick && validend >= tick {
+			analyser.roundStart = currRound.StartTick
+			analyser.roundEnd = currRound.EndTick
+			analyser.roundOffEnd = currRound.OfficialEndTick
 			analyser.curValidRound = currRound
-			analyser.RoundPlayed = roundNumber
+			analyser.roundPlayed = roundNumber
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
 				"round number": roundNumber,
-				"start tick":   currRound.startTick,
-				"end tick":     currRound.endTick,
-				"official end": currRound.officialEndTick,
+				"start tick":   currRound.StartTick,
+				"end tick":     currRound.EndTick,
+				"official end": currRound.OfficialEndTick,
 			}).Info("Round number has been set.")
 
 			return true
 		}
 	}
 	return false
+}
+
+// setRoundType find the type of round
+func (analyser *Analyser) setRoundType() {
+	var currentTEquipment, currentCTequipment int
+	roundType := "NormalRound"
+	tick := analyser.getGameTick()
+	gs := analyser.parser.GameState()
+
+	// get teams
+	tTeam := gs.Participants().TeamMembers(p_common.TeamTerrorists)
+	ctTeam := gs.Participants().TeamMembers(p_common.TeamCounterTerrorists)
+
+	for _, currPlayer := range tTeam {
+		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
+			currentTEquipment += NewPPlayer.GetCurrentEqValue()
+		}
+	}
+
+	for _, currPlayer := range ctTeam {
+		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
+			currentCTequipment += NewPPlayer.GetCurrentEqValue()
+		}
+	}
+
+	// pistol round handling only normal time
+	// first round of each halfs
+	if analyser.roundPlayed <= 30 && analyser.roundPlayed%15 == 1 {
+		roundType = "PistolRound"
+		analyser.currentRoundType = common.PistolRound
+	} else {
+		// calculate percentage of current eq. value
+		diffPercent := math.Abs(math.Round((((float64)(currentCTequipment - currentTEquipment)) / (((float64)(currentCTequipment + currentTEquipment)) / 2) * 100)))
+		if diffPercent >= 75 {
+			analyser.currentRoundType = common.EcoRound
+			roundType = "EcoRound"
+		} else if diffPercent >= 50 && diffPercent < 75 {
+			analyser.currentRoundType = common.ForceBuyRound
+			roundType = "ForceBuyRound"
+		} //else {
+		// 	analyser.currentRoundType = NormalRound
+		// 	roundType = "NormalRound"
+		//
+		// }
+	}
+
+	analyser.log.WithFields(logging.Fields{
+		"t team":             tTeam[0].TeamState.ClanName,
+		"ct team":            ctTeam[0].TeamState.ClanName,
+		"special round type": roundType,
+		"tick":               tick,
+		"round":              analyser.roundPlayed,
+	}).Info("Playing round type:")
 }
 
 // ############################################

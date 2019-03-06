@@ -2,10 +2,9 @@ package analyser
 
 import (
 	copier "github.com/jinzhu/copier"
-	"github.com/markus-wa/demoinfocs-golang/common"
+	p_common "github.com/markus-wa/demoinfocs-golang/common"
 	"github.com/markus-wa/demoinfocs-golang/events"
-	"github.com/quancore/demoanalyzer-go/player"
-
+	common "github.com/quancore/demoanalyzer-go/common"
 	logging "github.com/sirupsen/logrus"
 )
 
@@ -14,15 +13,18 @@ import (
 // handleRoundEnd handle end of the round
 // mainly called by score update or round end event
 func (analyser *Analyser) handleRoundEnd(e interface{}) {
+	tick := analyser.getGameTick()
 
 	// check match has already started and not yet finished
 	if analyser.isFirstParse && !analyser.checkMatchValidity() {
-		analyser.IsCancelled = true
+		analyser.log.WithFields(logging.Fields{
+			"tick": tick,
+		}).Error("Round end or score update called outside the match.")
+		analyser.isCancelled = true
 		return
 	}
 
-	tick := analyser.getGameTick()
-	var winnerTS, loserTS *common.TeamState
+	var winnerTS, loserTS *p_common.TeamState
 	var newTscore, newCTscore int
 	var eventString string
 
@@ -34,12 +36,20 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		winnerTS = e.TeamState
 		loserTS = e.TeamState.Opponent
 
+		if winnerTS == nil || loserTS == nil {
+			analyser.log.WithFields(logging.Fields{
+				"tick":  tick,
+				"event": eventString,
+			}).Error("Score update event with nill states")
+			return
+		}
+
 		switch winnerTS.Team() {
-		case common.TeamTerrorists:
+		case p_common.TeamTerrorists:
 			newTscore = winnerTS.Score
 			newCTscore = loserTS.Score
 
-		case common.TeamCounterTerrorists:
+		case p_common.TeamCounterTerrorists:
 			newTscore = loserTS.Score
 			newCTscore = winnerTS.Score
 
@@ -57,22 +67,20 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// a round
 		// for second parse, score update event cannot end a round if it is not counted as
 		// round end score update event for the first parsing.
-		if analyser.isFirstParse && analyser.InRound && !analyser.IsPlayerHurt {
+		if analyser.isFirstParse && analyser.inRound && !analyser.isPlayerHurt {
 			if !analyser.updateScore(newTscore, newCTscore, eventString) {
 				analyser.log.WithFields(logging.Fields{
 					"t score":  newTscore,
 					"ct score": newCTscore,
 					"tick":     tick,
-					// "winner":   analyser.getSideString(winnerTS.Team()),
-					"event": eventString,
+					"event":    eventString,
 				}).Error("Invalid score update without ending round.")
 			} else {
 				analyser.log.WithFields(logging.Fields{
 					"t score":  newTscore,
 					"ct score": newCTscore,
 					"tick":     tick,
-					// "winner":   analyser.getSideString(winnerTS.Team()),
-					"event": eventString,
+					"event":    eventString,
 				}).Error("Score has been updated without ending round")
 			}
 			return
@@ -86,19 +94,19 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		if analyser.isFirstParse {
 			// if the event is round end event
 			// check the end reason as well
-			if !analyser.IsCancelled && !analyser.checkFinishedRoundValidity(e) {
+			if !analyser.isCancelled && !analyser.checkFinishedRoundValidity(e) {
 				analyser.log.WithFields(logging.Fields{
 					"tick": tick,
 				}).Error("Round end because of invalid round end reason")
-				analyser.IsCancelled = true
-				analyser.InRound = false
+				analyser.isCancelled = true
+				analyser.inRound = false
 				return
 			}
-			if !analyser.IsCancelled && !analyser.IsPlayerHurt {
+			if !analyser.isCancelled && !analyser.isPlayerHurt {
 				analyser.log.WithFields(logging.Fields{
 					"tick": tick,
 				}).Error("No one hurted in this round. Will cancelled.")
-				analyser.IsCancelled = true
+				analyser.isCancelled = true
 			}
 
 		} else { // second parse
@@ -106,7 +114,7 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 				analyser.log.WithFields(logging.Fields{
 					"tick":           tick,
 					"round end tick": analyser.roundEnd,
-					"round number":   analyser.RoundPlayed,
+					"round number":   analyser.roundPlayed,
 					"event name":     eventString,
 				}).Info("Invalid round end.")
 				return
@@ -116,21 +124,31 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// get team states
 		winnerTS = e.WinnerState
 		loserTS = e.LoserState
+
+		if winnerTS == nil || loserTS == nil {
+			analyser.log.WithFields(logging.Fields{
+				"tick":  tick,
+				"event": eventString,
+			}).Error("Round end with nill states")
+			analyser.isCancelled = true
+			analyser.inRound = false
+			return
+		}
 		// update score
 		switch winnerTS.Team() {
-		case common.TeamTerrorists:
+		case p_common.TeamTerrorists:
 			// Winner's score + 1 because it hasn't actually been updated yet
 			newTscore = winnerTS.Score + 1
 			newCTscore = loserTS.Score
 
-		case common.TeamCounterTerrorists:
+		case p_common.TeamCounterTerrorists:
 			newTscore = loserTS.Score
 			newCTscore = winnerTS.Score + 1
 
 		default:
 			// Probably match medic or something similar
 			analyser.log.Info("No winner in this round ")
-			analyser.IsCancelled = true
+			analyser.isCancelled = true
 		}
 	default:
 	}
@@ -141,7 +159,7 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// or no round has been played
 		// sometimes, an update event can update score in round so it
 		// should not be considered as round end
-		if analyser.roundEnd == tick && (analyser.RoundPlayed > analyser.lastRoundEndCalled) {
+		if analyser.roundEnd == tick && (analyser.roundPlayed > analyser.lastRoundEndCalled) {
 			// get team members
 			gs := analyser.parser.GameState()
 			participants := gs.Participants()
@@ -152,31 +170,31 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 			analyser.handleClutchSituation(winnerTS.Team(), loserTS.Team(), tick)
 
 			// update scores
-			analyser.Tscore = analyser.curValidRound.tScore
-			analyser.CTscore = analyser.curValidRound.ctScore
+			analyser.tScore = analyser.curValidRound.TScore
+			analyser.ctScore = analyser.curValidRound.CTScore
 
 			analyser.log.WithFields(logging.Fields{
-				"t score":      analyser.Tscore,
-				"ct score":     analyser.CTscore,
+				"t score":      analyser.tScore,
+				"ct score":     analyser.ctScore,
 				"tick":         tick,
-				"winner":       analyser.getSideString(winnerTS.Team()),
+				"winner":       common.GetSideString(winnerTS.Team()),
 				"event":        eventString,
-				"round number": analyser.RoundPlayed,
+				"round number": analyser.roundPlayed,
 			}).Info("Round is ended.")
 
 			// update last round called
-			analyser.lastRoundEndCalled = analyser.RoundPlayed
+			analyser.lastRoundEndCalled = analyser.roundPlayed
 
 			// check match is ended if there is no official end for
 			// this round and also handle KAST as well
 			if analyser.roundOffEnd <= 0 {
 				// notify kast to alive players
-				for _, alive := range analyser.CtAlive {
-					analyser.KastPlayers[alive.SteamID] = true
+				for _, alive := range analyser.ctAlive {
+					analyser.kastPlayers[alive.SteamID] = true
 				}
 
-				for _, alive := range analyser.TAlive {
-					analyser.KastPlayers[alive.SteamID] = true
+				for _, alive := range analyser.tAlive {
+					analyser.kastPlayers[alive.SteamID] = true
 				}
 
 				analyser.handleKAST()
@@ -190,17 +208,17 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 
 	} else { //first parsing
 
-		if analyser.InRound {
+		if analyser.inRound {
 			// check score update is valid
-			if !analyser.IsCancelled && !analyser.updateScore(newTscore, newCTscore, eventString) {
+			if !analyser.isCancelled && !analyser.updateScore(newTscore, newCTscore, eventString) {
 				analyser.log.WithFields(logging.Fields{
 					"t score":  newTscore,
 					"ct score": newCTscore,
 					"tick":     tick,
-					"winner":   analyser.getSideString(winnerTS.Team()),
+					"winner":   common.GetSideString(winnerTS.Team()),
 					"event":    eventString,
 				}).Error("Invalid score update.Will cancelled.")
-				analyser.IsCancelled = true
+				analyser.isCancelled = true
 			}
 
 			// reset money set flag for each half end because
@@ -210,30 +228,30 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 			}
 
 			// set this round is finished
-			analyser.InRound = false
-			if !analyser.IsCancelled {
+			analyser.inRound = false
+			if !analyser.isCancelled {
 				// analyser.RoundPlayed++
 
 				analyser.log.WithFields(logging.Fields{
 					"t score":         newTscore,
 					"ct score":        newCTscore,
 					"tick":            tick,
-					"winner":          analyser.getSideString(winnerTS.Team()),
+					"winner":          common.GetSideString(winnerTS.Team()),
 					"event":           eventString,
 					"winner team":     winnerTS.ClanName,
-					"number of round": analyser.RoundPlayed,
+					"number of round": analyser.roundPlayed,
 				}).Info("Round has been finished")
 
 				analyser.roundEnd = tick
 
-				newValidRound := roundTuples{startTick: analyser.roundStart, endTick: analyser.roundEnd,
-					tScore: analyser.Tscore, ctScore: analyser.CTscore}
+				newValidRound := common.RoundTuples{StartTick: analyser.roundStart, EndTick: analyser.roundEnd,
+					TScore: analyser.tScore, CTScore: analyser.ctScore}
 
-				analyser.validRounds[analyser.RoundPlayed] = &newValidRound
+				analyser.validRounds[analyser.roundPlayed] = &newValidRound
 				analyser.log.WithFields(logging.Fields{
-					"start tick":   analyser.validRounds[analyser.RoundPlayed].startTick,
-					"end tick":     analyser.validRounds[analyser.RoundPlayed].endTick,
-					"round number": analyser.RoundPlayed,
+					"start tick":   analyser.validRounds[analyser.roundPlayed].StartTick,
+					"end tick":     analyser.validRounds[analyser.roundPlayed].EndTick,
+					"round number": analyser.roundPlayed,
 				}).Info("New round has been added to list")
 
 			} else {
@@ -263,14 +281,14 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 	tick := analyser.getGameTick()
 
 	// we already called match start for this tick
-	// at the first match startitcan start at tick 0
+	// at the first match start itcan start at tick 0
 	if analyser.lastMatchStartedCalled == tick && analyser.lastMatchStartedCalled != 0 {
 		return
 	}
 
 	analyser.lastMatchStartedCalled = tick
 
-	var teamT, teamCT []*common.Player
+	var teamT, teamCT []*p_common.Player
 	var ok bool
 
 	// check participant validity
@@ -281,7 +299,7 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 			"ct number":  len(teamCT),
 			"t number":   len(teamT),
 		}).Error("Participant number is not expected for a match start.Aborted.")
-		analyser.IsCancelled = true
+		analyser.isCancelled = true
 		return
 	}
 
@@ -290,36 +308,20 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 		if !analyser.checkMoneyValidity() {
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
-				"played round": analyser.RoundPlayed,
+				"played round": analyser.roundPlayed,
 				"event name":   eventName,
 			}).Error("Money has been invalid for starting round on match start")
-			analyser.IsCancelled = true
+			analyser.isCancelled = true
 			return
 		}
 
-		// if analyser.checkFinishedMatchValidity() {
-		// 	log.WithFields(log.Fields{
-		// 		"tick": tick,
-		// 	}).Info("A valid match is running")
-		// 	return
-		// }
-		//
-		// // first check whether we are in overtime
-		// if analyser.checkMatchContinuity() {
-		// 	log.WithFields(log.Fields{
-		// 		"tick": tick,
-		// 	}).Info("Overtime is playing for this match")
-		// 	return
-		// }
-
 		analyser.roundStart = tick
 
-		if !analyser.MatchStarted {
+		if !analyser.matchStarted {
 			analyser.log.WithFields(logging.Fields{
 				"tick":       analyser.getGameTick(),
 				"event name": eventName,
 			}).Info("A new match has been started")
-			// analyser.saveState()
 
 			// reset match based variables
 			analyser.resetMatchVars()
@@ -329,14 +331,6 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 				"tick":       analyser.getGameTick(),
 				"event name": eventName,
 			}).Info("Match has already started.Count as round start if possible.")
-			// // if we already play at most one round load state
-			// if analyser.RoundPlayed < 1 {
-			// 	analyser.loadState()
-			// } else {
-			// 	analyser.saveState()
-			// }
-			// first serialize the match
-			// analyser.matchEncode()
 		}
 
 		// reset round based variables as well
@@ -361,20 +355,12 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 
 // handlePlayerConnect handle player connection event
 func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
-	// check match has already started and not yet finished
-	// if !analyser.checkMatchValidity() {
-	// 	analyser.IsCancelled = true
-	// 	// log.Error("invalid event")
-	// 	return
-	// }
-
 	NewPlayer := e.Player
 	uid := NewPlayer.SteamID
-	var NewPPlayer *player.PPlayer
-	// gs := analyser.parser.GameState()
+	var NewPPlayer *common.PPlayer
 	tick := analyser.getGameTick()
 
-	// if bot is connecting, ignore it
+	// if non player is connecting, ignore it
 	if !analyser.checkPlayerTeamValidity(NewPlayer) {
 		analyser.log.WithFields(logging.Fields{
 			"name": NewPlayer.Name,
@@ -391,10 +377,6 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 		// update parser player inside pplayer
 		NewPPlayer.Player = NewPlayer
 
-		if NewPlayer.Team == common.TeamUnassigned || NewPlayer.Team == common.TeamSpectators {
-			analyser.pendingPlayers[uid] = disconnectedPTuple
-		}
-
 		analyser.log.WithFields(logging.Fields{
 			"name":              disconnectedPTuple.Player.Name,
 			"user id":           disconnectedPTuple.Player.SteamID,
@@ -402,27 +384,6 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 			"disconnected tick": disconnectedPTuple.DisconnectedTick,
 			"player team":       NewPlayer.Team,
 		}).Info("Player has been reconnected: ")
-
-		// terroristTeamState := gs.TeamTerrorists()
-		// ctTeamState := gs.TeamCounterTerrorists()
-		// tTeamName := terroristTeamState.ClanName
-		// ctTeamName := ctTeamState.ClanName
-
-		// // incase of team has already switched
-		// if tTeamName == val.teamName {
-		// 	NewPPlayer.Team = common.TeamTerrorists
-		// 	// NewPPlayer.TeamState = terroristTeamState
-		// } else if ctTeamName == val.teamName {
-		// 	NewPPlayer.Team = common.TeamCounterTerrorists
-		// 	// NewPPlayer.TeamState = ctTeamState
-		// } else {
-		// 	log.WithFields(log.Fields{
-		// 		"name":    NewPPlayer.Name,
-		// 		"user id": NewPPlayer.SteamID,
-		// 		"tick":    tick,
-		// 	}).Error("Connected player has no valid team ")
-		// 	return
-		// }
 
 	} else { //new connection
 		if val, ok := analyser.getPlayerByID(uid, false); ok {
@@ -434,7 +395,7 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 			return
 		}
 		// create new player and append to the list
-		NewPPlayer = player.NewPPlayer(NewPlayer)
+		NewPPlayer = common.NewPPlayer(NewPlayer)
 
 		analyser.log.WithFields(logging.Fields{
 			"name":        NewPlayer.Name,
@@ -443,38 +404,29 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 			"player team": NewPlayer.Team,
 		}).Info("Player has been connected: ")
 	}
-	// append new value to mapNewPPlayer := player.NewPPlayer(NewPlayer)
 
 	if playerSide, ok := NewPPlayer.GetSide(); ok {
-		analyser.Players[uid] = NewPPlayer
-		if analyser.TAlive != nil && analyser.CtAlive != nil {
+		analyser.players[uid] = NewPPlayer
+		if analyser.tAlive != nil && analyser.ctAlive != nil {
 			switch playerSide {
-			case "T":
-				analyser.TAlive[uid] = NewPPlayer
-			case "CT":
-				analyser.CtAlive[uid] = NewPPlayer
+			case p_common.TeamTerrorists:
+				analyser.tAlive[uid] = NewPPlayer
+			case p_common.TeamCounterTerrorists:
+				analyser.ctAlive[uid] = NewPPlayer
 			}
 		}
 
 	}
 
-	delete(analyser.DisconnectedPlayers, uid)
+	delete(analyser.disconnectedPlayers, uid)
 }
 
 // handlePlayerDisconnect handle player disconnection event
 func (analyser *Analyser) handlePlayerDisconnect(e events.PlayerDisconnected) {
 	currentPlayer := e.Player
-	playerSide := analyser.getSideString(currentPlayer.Team)
+	playerSide := currentPlayer.Team
 	currentPLayerID := currentPlayer.SteamID
 	tick := analyser.getGameTick()
-
-	// // if bot is disconnecting, ignore it
-	// if !analyser.checkPlayerTeamValidity(currentPlayer) {
-	// 	analyser.log.WithFields(logging.Fields{
-	// 		"name": currentPlayer.Name,
-	// 	}).Info("A non-player is tring to disconnect.ignored. ")
-	// 	return
-	// }
 
 	if currentPPlayer, ok := analyser.getPlayerByID(currentPLayerID, false); ok {
 		analyser.log.WithFields(logging.Fields{
@@ -483,15 +435,14 @@ func (analyser *Analyser) handlePlayerDisconnect(e events.PlayerDisconnected) {
 			"tick":    tick,
 			"team":    currentPPlayer.Player.Team,
 		}).Info("Player has been disconnected: ")
-		// if it is the player of one team
-		// if currentPPlayer.Player.TeamState != nil {
+
 		// add player to disconnected player list
-		disconnected := &disconnectedTuple{DisconnectedTick: tick, Player: currentPPlayer}
-		analyser.DisconnectedPlayers[currentPLayerID] = disconnected
+		disconnected := &common.DisconnectedTuple{DisconnectedTick: tick, Player: currentPPlayer}
+		analyser.disconnectedPlayers[currentPLayerID] = disconnected
 		// }
 
-		// remove players from connected player and alive player list
-		delete(analyser.Players, currentPLayerID)
+		// remove players from connected player list
+		delete(analyser.players, currentPLayerID)
 		// delete alive player as well
 		analyser.deleteAlivePlayer(playerSide, currentPLayerID)
 
@@ -514,8 +465,8 @@ func (analyser *Analyser) handleTeamChange(e events.PlayerTeamChange) {
 	// uid := changedPlayer.SteamID
 	tick := analyser.getGameTick()
 
-	if (oldTeam == common.TeamSpectators || oldTeam == common.TeamUnassigned) &&
-		(newTeam == common.TeamTerrorists || newTeam == common.TeamCounterTerrorists) {
+	if (oldTeam == p_common.TeamSpectators || oldTeam == p_common.TeamUnassigned) &&
+		(newTeam == p_common.TeamTerrorists || newTeam == p_common.TeamCounterTerrorists) {
 		analyser.log.WithFields(logging.Fields{
 			"tick":     tick,
 			"name":     changedPlayer.Name,
@@ -523,8 +474,8 @@ func (analyser *Analyser) handleTeamChange(e events.PlayerTeamChange) {
 			"new team": newTeam,
 		}).Info("Unactive player become playing player")
 		analyser.handlePlayerConnect(events.PlayerConnect{Player: changedPlayer})
-	} else if (newTeam == common.TeamSpectators || newTeam == common.TeamUnassigned) &&
-		(oldTeam == common.TeamTerrorists || oldTeam == common.TeamCounterTerrorists) {
+	} else if (newTeam == p_common.TeamSpectators || newTeam == p_common.TeamUnassigned) &&
+		(oldTeam == p_common.TeamTerrorists || oldTeam == p_common.TeamCounterTerrorists) {
 		analyser.log.WithFields(logging.Fields{
 			"tick":     tick,
 			"name":     changedPlayer.Name,
@@ -532,44 +483,15 @@ func (analyser *Analyser) handleTeamChange(e events.PlayerTeamChange) {
 			"new team": newTeam,
 		}).Info("Playing player become unactive")
 		// deep copy unactive player from original player for disceonnection
-		var unactivePlayer common.Player
+		var unactivePlayer p_common.Player
 		copier.Copy(&unactivePlayer, changedPlayer)
 		// change team and team state to old one, so that there is no
 		// problem for disconnection handler
 		unactivePlayer.Team = oldTeam
 		unactivePlayer.TeamState = oldTeamState
+		// send uncative player to be disconnected
 		analyser.handlePlayerDisconnect(events.PlayerDisconnected{Player: &unactivePlayer})
 	}
-
-	// if reconnectedTuple, ok := analyser.pendingPlayers[uid]; ok {
-	// 	// create new player and append to the list
-	// 	NewPPlayer := reconnectedTuple.Player
-	// 	// update parser player inside pplayer
-	// 	NewPPlayer.Player = changedPlayer
-	//
-	// 	analyser.log.WithFields(logging.Fields{
-	// 		"tick":     tick,
-	// 		"name":     changedPlayer.Name,
-	// 		"old team": e.OldTeam,
-	// 		"new team": changedPlayer.Team,
-	// 	}).Info("Unassigned player team has been changed")
-	//
-	// 	// add player to connected players when team is valid
-	// 	if playerSide, ok := NewPPlayer.GetSide(); ok {
-	// 		analyser.Players[uid] = NewPPlayer
-	// 		if analyser.TAlive != nil && analyser.CtAlive != nil {
-	// 			switch playerSide {
-	// 			case "T":
-	// 				analyser.TAlive[uid] = NewPPlayer
-	// 			case "CT":
-	// 				analyser.CtAlive[uid] = NewPPlayer
-	// 			}
-	// 		}
-	//
-	// 		delete(analyser.pendingPlayers, uid)
-	// 	}
-	//
-	// }
 }
 
 // // handleGamePhaseChange handle when game phase has been changed
@@ -602,10 +524,11 @@ func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
 	tick := analyser.getGameTick()
 
 	// check teams
-	var teamT, teamCT []*common.Player
+	var teamT, teamCT []*p_common.Player
 	// var teamOk bool
 
 	teamT, teamCT, _ = analyser.checkParticipantValidity()
+
 	// teamT, teamCT, teamOk = analyser.checkParticipantValidity()
 	// if analyser.isFirstParse && !teamOk {
 	// 	analyser.IsCancelled = true
@@ -624,55 +547,45 @@ func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
 		if !analyser.checkMoneyValidity() {
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
-				"played round": analyser.RoundPlayed,
+				"played round": analyser.roundPlayed,
 				"player money": analyser.getAllPlayers()[0].Money,
 			}).Error("Money has been invalid for round start")
-			analyser.IsCancelled = true
+			analyser.isCancelled = true
 			return
 		}
 
 		// check match has already started and not yet finished
 		if !analyser.checkMatchValidity() {
-			analyser.IsCancelled = true
-			// log.Error("invalid event")
+			analyser.log.WithFields(logging.Fields{
+				"tick": tick,
+			}).Error("Round start called outside the match.")
+			analyser.isCancelled = true
 			return
 		}
 		analyser.roundStart = tick
 
-		if analyser.InRound {
+		if analyser.inRound {
 			analyser.log.WithFields(logging.Fields{
 				"tick": tick,
 			}).Error("Round has already been started.Invalid round.")
-
-			// // a round start called again without a proper end
-			// // this means the previous round was invalid
-			// // if an event has happened int his invalid round
-			// // we need to load previous state
-			// if analyser.IsEventHappened {
-			// 	analyser.loadState()
-			// }
 
 		} else {
 			analyser.log.WithFields(logging.Fields{
 				"tick": tick,
 			}).Info("New round has been started")
-
-			// // save state for each round
-			// analyser.saveState()
-
 		}
 
 	} else {
 		if !analyser.setRoundStart(tick) || tick != analyser.roundStart {
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
-				"round number": analyser.RoundPlayed,
+				"round number": analyser.roundPlayed,
 			}).Info("Invalid round start event")
 			return
 		}
 		analyser.log.WithFields(logging.Fields{
 			"tick":         tick,
-			"round number": analyser.RoundPlayed,
+			"round number": analyser.roundPlayed,
 		}).Info("A new round has been started")
 	}
 
@@ -693,16 +606,16 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 		}
 		analyser.log.WithFields(logging.Fields{
 			"tick":         tick,
-			"round number": analyser.RoundPlayed,
+			"round number": analyser.roundPlayed,
 		}).Info("Round has officially ended.")
 
 		// notify kast to alive players
-		for _, alive := range analyser.CtAlive {
-			analyser.KastPlayers[alive.SteamID] = true
+		for _, alive := range analyser.ctAlive {
+			analyser.kastPlayers[alive.SteamID] = true
 		}
 
-		for _, alive := range analyser.TAlive {
-			analyser.KastPlayers[alive.SteamID] = true
+		for _, alive := range analyser.tAlive {
+			analyser.kastPlayers[alive.SteamID] = true
 		}
 
 		analyser.handleKAST()
@@ -714,25 +627,27 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 	} else {
 		// check match has already started and not yet finished
 		if !analyser.checkMatchValidity() {
-			analyser.IsCancelled = true
-			analyser.log.Error("Official round end called outside the match")
+			analyser.isCancelled = true
+			analyser.log.WithFields(logging.Fields{
+				"tick": tick,
+			}).Error("Official round end called outside the match.")
 			return
 		}
 
 		// if we are not in round (round ended)
-		if !analyser.IsCancelled && !analyser.InRound {
+		if !analyser.isCancelled && !analyser.inRound {
 			analyser.log.WithFields(logging.Fields{
 				"tick": tick,
 				// roundplayed has already incremented by one
-				"round": analyser.RoundPlayed,
+				"round": analyser.roundPlayed,
 			}).Info("Round has officially ended")
 
 			var ok bool
-			// sometimes there is a wrong score update which can cause nil error
-			if analyser.curValidRound, ok = analyser.validRounds[analyser.RoundPlayed]; ok && (analyser.RoundPlayed > 0) {
+			// sometimes there is a wrong score update for ending round which can cause nil error
+			if analyser.curValidRound, ok = analyser.validRounds[analyser.roundPlayed]; ok && (analyser.roundPlayed > 0) {
 				// check this is the official end of correct round
-				if !(analyser.roundStart == analyser.curValidRound.startTick &&
-					analyser.roundEnd == analyser.curValidRound.endTick) {
+				if !(analyser.roundStart == analyser.curValidRound.StartTick &&
+					analyser.roundEnd == analyser.curValidRound.EndTick) {
 					analyser.log.WithFields(logging.Fields{
 						"tick": tick,
 					}).Error("Round official end is not matching with round start and round end")
@@ -745,16 +660,13 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 				return
 			}
 
-			analyser.curValidRound.officialEndTick = tick
+			analyser.curValidRound.OfficialEndTick = tick
 
 		} else {
 			analyser.log.WithFields(logging.Fields{
 				"tick": tick,
 			}).Error("Round officially ended without proper round end")
-			analyser.IsCancelled = true
-			// if analyser.IsEventHappened {
-			// 	analyser.loadState()
-			// }
+			analyser.isCancelled = true
 		}
 	}
 
