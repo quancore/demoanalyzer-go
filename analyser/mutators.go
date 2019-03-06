@@ -326,6 +326,8 @@ func (analyser *Analyser) setRoundType() {
 	analyser.log.WithFields(logging.Fields{
 		"t team":             tTeam[0].TeamState.ClanName,
 		"ct team":            ctTeam[0].TeamState.ClanName,
+		"t money":            currentTEquipment,
+		"ct money":           currentCTequipment,
 		"special round type": roundType,
 		"tick":               tick,
 		"round":              analyser.roundPlayed,
