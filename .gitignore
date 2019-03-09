@@ -1,4 +1,9 @@
 ## Folders
+# Ignore `bin` dir
+bin/
+# or
+*/bin/*
+
 old_analyser/
 parser_branch_log
 test_parser/
