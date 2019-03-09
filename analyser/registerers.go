@@ -66,6 +66,11 @@ func (analyser *Analyser) registerMatchEventHandlers() {
 	// therefore it is registered in the first parsing
 	if analyser.isFirstParse {
 		analyser.parser.RegisterEventHandler(func(e events.PlayerHurt) { analyser.handleHurt(e) })
+		// it is very rare however, there could be sme round that no one get hurts and bomb has been
+		// exploded and a team win the round. So we need to record bomb planted event as well in the
+		// first parse to understand a round is valid.
+		analyser.parser.RegisterEventHandler(func(e events.BombPlanted) { analyser.handleBombPlanted(e) })
+
 	}
 
 	// **************************************************

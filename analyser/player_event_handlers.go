@@ -223,10 +223,20 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt) {
 		return
 	}
 
-	// determine the type of round in the first
-	// player hurt event of second parsing
-	if !(analyser.isPlayerHurt || analyser.isFirstParse) {
-		analyser.setRoundType()
+	// check is there any player waiting for round start
+	// if we are in first parse and several players are waiting to join and
+	// this is the first hurt event for this round, check missed players
+	// has been join the game
+	if analyser.isFirstParse && analyser.isPlayerWaiting && !analyser.isPlayerHurt {
+		if _, _, ok := analyser.checkParticipantValidity(); ok {
+			analyser.log.WithFields(logging.Fields{
+				"tick": analyser.getGameTick(),
+			}).Info("Late match start has been triggered with player hurt event")
+			analyser.isCancelled = false
+			analyser.isPlayerWaiting = false
+			// call match start again
+			analyser.handleMatchStart("late_match_start")
+		}
 	}
 
 	// handle victim
@@ -283,6 +293,13 @@ func (analyser *Analyser) handleWeaponFire(e events.WeaponFire) {
 	tick := analyser.getGameTick()
 	shooterID := e.Shooter.SteamID
 
+	// determine the type of round in the first
+	// player hurt event of second parsing
+	if !(analyser.isWeaponFired || analyser.isFirstParse) {
+		analyser.setRoundType()
+	}
+
+	analyser.isWeaponFired = true
 	if shooter, ok := analyser.getPlayerByID(shooterID, true); ok {
 		shooter.NotifyWeaponFire(tick)
 		analyser.log.WithFields(logging.Fields{
@@ -449,71 +466,88 @@ func (analyser *Analyser) handleKAST() {
 }
 
 // handleClutchSituation notify players who did a clutch for this round
-func (analyser *Analyser) handleClutchSituation(winnerTS, loserTS p_common.Team, tick int) {
-	clutchPLayer := analyser.clutchPlayer
+func (analyser *Analyser) handleClutchSituation(winnerTS p_common.Team, tick int) {
+	var clutchPlayer *common.PPlayer
+	var clutchHappen bool
+
+	// get clutch players of each side
+	tClutchPLayer := analyser.tClutchPlayer
+	ctClutchPLayer := analyser.ctClutchPlayer
+
 	// check whether player did a clutch
 	// any kind of 1 to n winning count as clutch
 	// clutch player may be killed but the important thing is that
 	// the team of clutch player has to win
-	if analyser.isPossibleClutch && clutchPLayer != nil {
-		clutchPlayerSide := clutchPLayer.Team
-		if clutchPlayerSide == winnerTS {
-			clutchHappen := true
-			clutchPLayer.NotifyClutchWon()
-
-			// clutchHappen := false
-			// switch clutchPlayerSide {
-			// case common.TeamTerrorists:
-			// 	opponentAliveNum := len(analyser.CtAlive)
-			// 	if opponentAliveNum == 0 {
-			// 		clutchPLayer.NotifyClutchWon()
-			// 		clutchHappen = true
-			// 	}
-			// case common.TeamCounterTerrorists:
-			// 	opponentAliveNum := len(analyser.TAlive)
-			// 	if opponentAliveNum == 0 {
-			// 		clutchPLayer.NotifyClutchWon()
-			// 		clutchHappen = true
-			// 	}
-			// default:
-			// 	analyser.log.WithFields(logging.Fields{
-			// 		"name":    clutchPLayer.Name,
-			// 		"user id": clutchPLayer.SteamID,
-			// 		"tick":    tick,
-			// 	}).Error("Player has no side for clutch situation: ")
-			// }
-
-			if clutchHappen {
-				analyser.log.WithFields(logging.Fields{
-					"name":    clutchPLayer.Name,
-					"user id": clutchPLayer.SteamID,
-					"tick":    tick,
-				}).Info("Player did a clutch ")
+	if winnerTS == p_common.TeamTerrorists {
+		if analyser.isTPossibleClutch && tClutchPLayer != nil {
+			// if the player still alive
+			if _, ok := analyser.tAlive[tClutchPLayer.SteamID]; ok {
+				clutchHappen = true
+				clutchPlayer = tClutchPLayer
 			}
-
 		}
+
+	} else if winnerTS == p_common.TeamCounterTerrorists {
+		if analyser.isCTPossibleClutch && ctClutchPLayer != nil {
+			if _, ok := analyser.ctAlive[ctClutchPLayer.SteamID]; ok {
+				clutchHappen = true
+				clutchPlayer = ctClutchPLayer
+			}
+		}
+	}
+
+	if clutchHappen {
+		clutchPlayer.NotifyClutchWon()
+		analyser.log.WithFields(logging.Fields{
+			"name":    clutchPlayer.Name,
+			"user id": clutchPlayer.SteamID,
+			"tick":    tick,
+		}).Info("Player did a clutch ")
 	}
 }
 
 // handleSpecialRound handle special round won and loss
-func (analyser *Analyser) handleSpecialRound(Winner, Loser []*p_common.Player) {
+func (analyser *Analyser) handleSpecialRound(winnerTS, loserTS p_common.Team) {
+	// get team members
+	gs := analyser.parser.GameState()
+	participants := gs.Participants()
+	winnerTeam := participants.TeamMembers(winnerTS)
+	loserTeam := participants.TeamMembers(loserTS)
+
+	var winnerRoundType, loserRoundType common.RoundType
+
+	// find out winner and loser team round type
+	if winnerTS == p_common.TeamTerrorists {
+		winnerRoundType, loserRoundType = analyser.currentTRoundType, analyser.currentCTRoundType
+	} else if winnerTS == p_common.TeamCounterTerrorists {
+		winnerRoundType, loserRoundType = analyser.currentCTRoundType, analyser.currentTRoundType
+	} else {
+		analyser.log.WithFields(logging.Fields{
+			"winner team": winnerTS,
+			"loser team":  loserTS,
+			"tick":        analyser.getGameTick(),
+		}).Error("Invalid team type for handling round type")
+		return
+	}
+
 	analyser.log.WithFields(logging.Fields{
-		"winner team":        Winner[0].TeamState.ClanName,
-		"loser team":         Loser[0].TeamState.ClanName,
-		"special round type": analyser.currentRoundType,
-		"tick":               analyser.getGameTick(),
+		"winner team":   winnerTeam[0].TeamState.ClanName,
+		"loser team":    loserTeam[0].TeamState.ClanName,
+		"T round type":  analyser.currentTRoundType,
+		"CT round type": analyser.currentCTRoundType,
+		"tick":          analyser.getGameTick(),
 	}).Info("Handling type of the round")
 
 	// winner team
-	for _, currPlayer := range Winner {
+	for _, currPlayer := range winnerTeam {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
-			NewPPlayer.NotifySpecialRoundWon(analyser.currentRoundType)
+			NewPPlayer.NotifySpecialRoundWon(winnerRoundType)
 		}
 	}
 	// loser team
-	for _, currPlayer := range Loser {
+	for _, currPlayer := range loserTeam {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
-			NewPPlayer.NotifySpecialRoundLost(analyser.currentRoundType)
+			NewPPlayer.NotifySpecialRoundLost(loserRoundType)
 		}
 	}
 

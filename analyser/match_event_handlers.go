@@ -67,7 +67,7 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// a round
 		// for second parse, score update event cannot end a round if it is not counted as
 		// round end score update event for the first parsing.
-		if analyser.isFirstParse && analyser.inRound && !analyser.isPlayerHurt {
+		if analyser.isFirstParse && analyser.inRound && !(analyser.isPlayerHurt || analyser.isBombDefused) {
 			if !analyser.updateScore(newTscore, newCTscore, eventString) {
 				analyser.log.WithFields(logging.Fields{
 					"t score":  newTscore,
@@ -102,10 +102,10 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 				analyser.inRound = false
 				return
 			}
-			if !analyser.isCancelled && !analyser.isPlayerHurt {
+			if !analyser.isCancelled && !(analyser.isPlayerHurt || analyser.isBombPlanted) {
 				analyser.log.WithFields(logging.Fields{
 					"tick": tick,
-				}).Error("No one hurted in this round. Will cancelled.")
+				}).Error("No one hurted or bomb not planted in this round. Will cancelled.")
 				analyser.isCancelled = true
 			}
 
@@ -160,14 +160,11 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// sometimes, an update event can update score in round so it
 		// should not be considered as round end
 		if analyser.roundEnd == tick && (analyser.roundPlayed > analyser.lastRoundEndCalled) {
-			// get team members
-			gs := analyser.parser.GameState()
-			participants := gs.Participants()
-			winnerTeam := participants.TeamMembers(winnerTS.Team())
-			loserTeam := participants.TeamMembers(loserTS.Team())
 
-			analyser.handleSpecialRound(winnerTeam, loserTeam)
-			analyser.handleClutchSituation(winnerTS.Team(), loserTS.Team(), tick)
+			analyser.handleSpecialRound(winnerTS.Team(), loserTS.Team())
+
+			// set winner team to use in round official end
+			analyser.winnerTeam = winnerTS.Team()
 
 			// update scores
 			analyser.tScore = analyser.curValidRound.TScore
@@ -197,6 +194,7 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 					analyser.kastPlayers[alive.SteamID] = true
 				}
 
+				analyser.handleClutchSituation(winnerTS.Team(), tick)
 				analyser.handleKAST()
 				analyser.checkMatchContinuity()
 			}
@@ -286,8 +284,6 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 		return
 	}
 
-	analyser.lastMatchStartedCalled = tick
-
 	var teamT, teamCT []*p_common.Player
 	var ok bool
 
@@ -300,6 +296,9 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 			"t number":   len(teamT),
 		}).Error("Participant number is not expected for a match start.Aborted.")
 		analyser.isCancelled = true
+		// maybe several player can join later
+		// so set the flag for waiting
+		analyser.isPlayerWaiting = true
 		return
 	}
 
@@ -350,6 +349,8 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 			"tick": tick,
 		}).Info("A match has been started.Count as round start.")
 	}
+
+	analyser.lastMatchStartedCalled = tick
 
 }
 
@@ -619,6 +620,10 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 		}
 
 		analyser.handleKAST()
+		// if there is a winner handle clutch as well
+		if analyser.winnerTeam == p_common.TeamTerrorists || analyser.winnerTeam == p_common.TeamCounterTerrorists {
+			analyser.handleClutchSituation(analyser.winnerTeam, tick)
+		}
 		analyser.checkMatchContinuity()
 
 		// reset roundoffend for duplicate calls

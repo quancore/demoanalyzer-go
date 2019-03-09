@@ -197,6 +197,8 @@ func (analyser *Analyser) checkMatchContinuity() bool {
 			analyser.writeToFile(analyser.outPath)
 			analyser.isOvertime = false
 			analyser.matchEnded = true
+			// set file succesfully analyzed
+			analyser.isSuccesfulAnalyzed = true
 		} else {
 			analyser.isOvertime = true
 
@@ -231,27 +233,28 @@ func (analyser *Analyser) checkClutchSituation() {
 	countALiveT := len(analyser.tAlive)
 	countALiveCT := len(analyser.ctAlive)
 
-	if !analyser.isPossibleClutch {
-		// possible clutch for ct
-		if countALiveT > 0 && countALiveCT == 1 {
-			analyser.isPossibleClutch = true
-			for _, playerPtr := range analyser.ctAlive {
-				analyser.clutchPlayer = playerPtr
-				analyser.log.WithFields(logging.Fields{
-					"name": playerPtr.Name,
-				}).Info("Possible clutch player ")
-			}
-
-		} else if countALiveCT > 0 && countALiveT == 1 { // possible clutch for t
-			analyser.isPossibleClutch = true
-			for _, playerPtr := range analyser.tAlive {
-				analyser.clutchPlayer = playerPtr
-				analyser.log.WithFields(logging.Fields{
-					"name": playerPtr.Name,
-				}).Error("Possible clutch player ")
-			}
+	// possible clutch for ct
+	if !analyser.isCTPossibleClutch && (countALiveT > 0 && countALiveCT == 1) {
+		analyser.isCTPossibleClutch = true
+		for _, playerPtr := range analyser.ctAlive {
+			analyser.ctClutchPlayer = playerPtr
+			analyser.log.WithFields(logging.Fields{
+				"name": playerPtr.Name,
+			}).Info("Possible clutch player for ct")
 		}
 	}
+
+	// possible clutch for t
+	if !analyser.isTPossibleClutch && (countALiveCT > 0 && countALiveT == 1) {
+		analyser.isTPossibleClutch = true
+		for _, playerPtr := range analyser.tAlive {
+			analyser.tClutchPlayer = playerPtr
+			analyser.log.WithFields(logging.Fields{
+				"name": playerPtr.Name,
+			}).Error("Possible clutch player ")
+		}
+	}
+
 }
 
 // checkTeamSideValidity check validity of players with respect to their teams
@@ -306,6 +309,13 @@ func (analyser *Analyser) checkParticipantValidity() ([]*p_common.Player, []*p_c
 	participants := gs.Participants()
 	teamTerrorist := participants.TeamMembers(p_common.TeamTerrorists)
 	teamCT := participants.TeamMembers(p_common.TeamCounterTerrorists)
+
+	for _, t := range teamTerrorist {
+		analyser.log.WithFields(logging.Fields{
+			"name": t.Name,
+			"team": t.Team,
+		}).Error("player team: ")
+	}
 	// all := participants.All()
 	// players := participants.Playing()
 

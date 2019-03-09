@@ -2,7 +2,6 @@ package analyser
 
 import (
 	"bufio"
-	"math"
 
 	dem "github.com/markus-wa/demoinfocs-golang"
 	p_common "github.com/markus-wa/demoinfocs-golang/common"
@@ -12,6 +11,13 @@ import (
 
 // Different mutators for demo analyser such as update, add players
 // reset match variables etc.
+
+// empirical equipment value limits for
+// finding type of round for each team
+const (
+	ecoRoundLimit   = 2300
+	forceRoundLimit = 12500
+)
 
 // ######## Initilizers and reset functions##########
 // resetAnalyser reset state of analyser
@@ -30,6 +36,7 @@ func (analyser *Analyser) resetAnalyserVars() {
 	analyser.NumOvertime = 6
 	analyser.minPlayedRound = 5
 	analyser.roundPlayed = 0
+	analyser.isSuccesfulAnalyzed = false
 }
 
 // initilizeRoundMaps initilize map vars related a round with empty maps
@@ -45,15 +52,21 @@ func (analyser *Analyser) resetRoundVars(teamT, teamCT []*p_common.Player, tick 
 	analyser.isBombPlanted = false
 	analyser.isBombDefusing = false
 	analyser.isBombDefused = false
-	analyser.currentRoundType = common.NormalRound
-	analyser.isPossibleClutch = false
+	analyser.currentTRoundType = common.NormalRound
+	analyser.currentCTRoundType = common.NormalRound
+	analyser.isTPossibleClutch = false
+	analyser.isCTPossibleClutch = false
 	analyser.defuser = nil
-	analyser.clutchPlayer = nil
+	analyser.tClutchPlayer = nil
+	analyser.ctClutchPlayer = nil
 	analyser.inRound = true
 	// will cancelled if true
 	analyser.isCancelled = false
 	analyser.isPlayerHurt = false
 	analyser.isEventHappened = false
+	analyser.isPlayerWaiting = false
+	analyser.isWeaponFired = false
+	analyser.winnerTeam = p_common.TeamUnassigned
 
 }
 
@@ -279,10 +292,73 @@ func (analyser *Analyser) setRoundStart(tick int) bool {
 	return false
 }
 
+// // setRoundType find the type of round
+// func (analyser *Analyser) setRoundType() {
+// 	var currentTEquipment, currentCTequipment, totalTMoney, totalCTmoney int
+// 	roundType := "NormalRound"
+// 	tick := analyser.getGameTick()
+// 	gs := analyser.parser.GameState()
+//
+// 	// get teams
+// 	tTeam := gs.Participants().TeamMembers(p_common.TeamTerrorists)
+// 	ctTeam := gs.Participants().TeamMembers(p_common.TeamCounterTerrorists)
+//
+// 	for _, currPlayer := range tTeam {
+// 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
+// 			currentTEquipment += NewPPlayer.GetCurrentEqValue()
+// 			totalTMoney += NewPPlayer.GetMoney()
+// 		}
+// 	}
+//
+// 	for _, currPlayer := range ctTeam {
+// 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
+// 			currentCTequipment += NewPPlayer.GetCurrentEqValue()
+// 			totalCTmoney += NewPPlayer.GetMoney()
+//
+// 		}
+// 	}
+//
+// 	var diffPercent float64
+// 	// pistol round handling only normal time
+// 	// first round of each halfs
+// 	if analyser.roundPlayed <= 30 && analyser.roundPlayed%15 == 1 {
+// 		roundType = "PistolRound"
+// 		analyser.currentRoundType = common.PistolRound
+// 	} else {
+//
+// 		// calculate percentage of current eq. value
+// 		diffPercent = math.Abs(math.Round(((float64)(currentCTequipment - currentTEquipment)) / (((float64)(currentCTequipment + currentTEquipment)) / 2) * 100))
+// 		if diffPercent >= 75 {
+// 			analyser.currentRoundType = common.EcoRound
+// 			roundType = "EcoRound"
+// 		} else if diffPercent >= 50 && diffPercent < 75 {
+// 			analyser.currentRoundType = common.ForceBuyRound
+// 			roundType = "ForceBuyRound"
+// 		} //else {
+// 		// 	analyser.currentRoundType = NormalRound
+// 		// 	roundType = "NormalRound"
+// 		//
+// 		// }
+// 	}
+//
+// 	analyser.log.WithFields(logging.Fields{
+// 		"t team":             tTeam[0].TeamState.ClanName,
+// 		"ct team":            ctTeam[0].TeamState.ClanName,
+// 		"t eq money":         currentTEquipment,
+// 		"ct eq money":        currentCTequipment,
+// 		"t money":            totalTMoney,
+// 		"ct money":           totalCTmoney,
+// 		"ratio":              diffPercent,
+// 		"special round type": roundType,
+// 		"tick":               tick,
+// 		"round":              analyser.roundPlayed,
+// 	}).Info("Playing round type:")
+// }
+
 // setRoundType find the type of round
 func (analyser *Analyser) setRoundType() {
-	var currentTEquipment, currentCTequipment int
-	roundType := "NormalRound"
+	var currentTEquipment, currentCTequipment, totalTMoney, totalCTmoney, startT, startCT int
+	var tRoundType, ctRoundType string
 	tick := analyser.getGameTick()
 	gs := analyser.parser.GameState()
 
@@ -290,48 +366,94 @@ func (analyser *Analyser) setRoundType() {
 	tTeam := gs.Participants().TeamMembers(p_common.TeamTerrorists)
 	ctTeam := gs.Participants().TeamMembers(p_common.TeamCounterTerrorists)
 
+	// first calculate equipment values for each team
 	for _, currPlayer := range tTeam {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
-			currentTEquipment += NewPPlayer.GetCurrentEqValue()
+			analyser.log.WithFields(logging.Fields{
+				"money": NewPPlayer.GetCurrentEqValue(),
+				"name":  NewPPlayer.Name,
+				"START": NewPPlayer.GetStartEqValue(),
+			}).Info("t team")
+			startT += NewPPlayer.GetStartEqValue()
+			// we subscribe 200 because this is the price of
+			// default pistol.We only care total amount spend
+			// for each team
+			playerCurrentEq := NewPPlayer.GetCurrentEqValue() - 200
+			if playerCurrentEq > 0 {
+				currentTEquipment += playerCurrentEq
+			}
+			totalTMoney += NewPPlayer.GetMoney()
 		}
 	}
 
 	for _, currPlayer := range ctTeam {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
-			currentCTequipment += NewPPlayer.GetCurrentEqValue()
+			analyser.log.WithFields(logging.Fields{
+				"money": NewPPlayer.GetCurrentEqValue(),
+				"name":  NewPPlayer.Name,
+				"START": NewPPlayer.GetStartEqValue(),
+			}).Info("ct team")
+			startCT += NewPPlayer.GetStartEqValue()
+
+			// we subscribe 200 because this is the price of
+			// default pistol.We only care total amount spend
+			// for each team
+			playerCurrentEq := NewPPlayer.GetCurrentEqValue() - 200
+			if playerCurrentEq > 0 {
+				currentCTequipment += playerCurrentEq
+			}
+			totalCTmoney += NewPPlayer.GetMoney()
+
 		}
 	}
+	// find type of round for each team
+	analyser.currentTRoundType, tRoundType = analyser.findRoundTypeByMoney(currentTEquipment)
+	analyser.currentCTRoundType, ctRoundType = analyser.findRoundTypeByMoney(currentCTequipment)
+
+	analyser.log.WithFields(logging.Fields{
+		"t team":         tTeam[0].TeamState.ClanName,
+		"ct team":        ctTeam[0].TeamState.ClanName,
+		"t eq money":     currentTEquipment,
+		"ct eq money":    currentCTequipment,
+		"round start t":  startT,
+		"round start ct": startCT,
+
+		// "t money":       totalTMoney,
+		// "ct money":      totalCTmoney,
+		// "t rs v":        tTeam[0].RoundStartEquipmentValue,
+		// "ct rs v":       ctTeam[0].RoundStartEquipmentValue,
+		"T round type":  tRoundType,
+		"CT round type": ctRoundType,
+		"tick":          tick,
+		"round":         analyser.roundPlayed,
+	}).Info("Playing round type:")
+}
+
+// findRoundTypeByMoney find the type of round by using money type
+func (analyser *Analyser) findRoundTypeByMoney(eqValue int) (common.RoundType, string) {
+	var roundType common.RoundType
+	var roundTypeStr string
 
 	// pistol round handling only normal time
 	// first round of each halfs
 	if analyser.roundPlayed <= 30 && analyser.roundPlayed%15 == 1 {
-		roundType = "PistolRound"
-		analyser.currentRoundType = common.PistolRound
+		roundTypeStr = "PistolRound"
+		roundType = common.PistolRound
 	} else {
-		// calculate percentage of current eq. value
-		diffPercent := math.Abs(math.Round((((float64)(currentCTequipment - currentTEquipment)) / (((float64)(currentCTequipment + currentTEquipment)) / 2) * 100)))
-		if diffPercent >= 75 {
-			analyser.currentRoundType = common.EcoRound
-			roundType = "EcoRound"
-		} else if diffPercent >= 50 && diffPercent < 75 {
-			analyser.currentRoundType = common.ForceBuyRound
-			roundType = "ForceBuyRound"
-		} //else {
-		// 	analyser.currentRoundType = NormalRound
-		// 	roundType = "NormalRound"
-		//
-		// }
+		if eqValue <= ecoRoundLimit {
+			roundType = common.EcoRound
+			roundTypeStr = "EcoRound"
+		} else if eqValue > ecoRoundLimit && eqValue <= forceRoundLimit {
+			roundType = common.ForceBuyRound
+			roundTypeStr = "ForceBuyRound"
+		} else {
+			roundType = common.NormalRound
+			roundTypeStr = "NormalRound"
+
+		}
 	}
 
-	analyser.log.WithFields(logging.Fields{
-		"t team":             tTeam[0].TeamState.ClanName,
-		"ct team":            ctTeam[0].TeamState.ClanName,
-		"t money":            currentTEquipment,
-		"ct money":           currentCTequipment,
-		"special round type": roundType,
-		"tick":               tick,
-		"round":              analyser.roundPlayed,
-	}).Info("Playing round type:")
+	return roundType, roundTypeStr
 }
 
 // ############################################

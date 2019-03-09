@@ -7,6 +7,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	dem "github.com/markus-wa/demoinfocs-golang"
+	p_common "github.com/markus-wa/demoinfocs-golang/common"
 	"github.com/markus-wa/demoinfocs-golang/msg"
 	common "github.com/quancore/demoanalyzer-go/common"
 	utils "github.com/quancore/demoanalyzer-go/utils"
@@ -54,8 +55,10 @@ type Analyser struct {
 	swapCTscore int
 	// min number of rounds played not to reset a match
 	minPlayedRound int
-	// current round type
-	currentRoundType common.RoundType
+	// current round type for t team
+	currentTRoundType common.RoundType
+	// current round type for ct team
+	currentCTRoundType common.RoundType
 	// round number lastly score swappped
 	lastScoreSwapped int
 	// sometimes match start event called twice so
@@ -77,8 +80,12 @@ type Analyser struct {
 	// keep round based player did kast
 	kastPlayers map[int64]bool
 
-	// player pointer possible to make a clutch
-	clutchPlayer *common.PPlayer
+	// t player pointer possible to make a clutch
+	tClutchPlayer *common.PPlayer
+	// ct clutch player
+	ctClutchPlayer *common.PPlayer
+	// winner team for the last round
+	winnerTeam p_common.Team
 	// player currently defusing the bomb
 	defuser *common.PPlayer
 	// current starting money
@@ -91,8 +98,10 @@ type Analyser struct {
 	isBombPlanted bool
 	// flag for bomb defusing
 	isBombDefusing bool
-	// clutch situation flag
-	isPossibleClutch bool
+	// clutch situation flag for t
+	isTPossibleClutch bool
+	// clutch situation flag for ct
+	isCTPossibleClutch bool
 
 	// variables to check validity of a round
 	//Truth value for whether we're currently in a round
@@ -101,8 +110,15 @@ type Analyser struct {
 	isCancelled bool
 	// Truth value whether a player has been hurt
 	isPlayerHurt bool
+	// Truth value for a weapon fired for this round
+	isWeaponFired bool
 	// Truth value to check an event occured during a round
 	isEventHappened bool
+	// Sometimes, several player has missed the match start but
+	// has been connected after match start and before first player hurt event
+	// so we will se the flag to wait several player join and trigger start
+	// according to status of this flag
+	isPlayerWaiting bool
 	// ************************
 
 	// ******** parser related vars ***
@@ -126,6 +142,9 @@ type Analyser struct {
 	// ******* parsing related vars *******
 	// first parser flag
 	isFirstParse bool
+	// flag indicating whole analyze finished and
+	// written to disk as a test file
+	isSuccesfulAnalyzed bool
 	// store round start tick
 	roundStart int
 	// store round end tick
@@ -137,7 +156,6 @@ type Analyser struct {
 	validRounds map[int]*common.RoundTuples
 	// current valid round tuple
 	curValidRound *common.RoundTuples
-	// current start and end of the rounds
 	// ************************************
 }
 
@@ -217,5 +235,12 @@ func (analyser *Analyser) Analyze() {
 	// parsetoend, so that we are not protecting sync betwenn net messages
 	// and event dispatch
 	err := analyser.parser.ParseToEnd()
-	utils.CheckError(err)
+
+	// sometimes demo files enden unexpectedly however, it is not important
+	// if we already finished the analyze
+	if err == dem.ErrUnexpectedEndOfDemo && analyser.isSuccesfulAnalyzed {
+		analyser.log.Info("Demo file ended unexpectedly however, analze has been finished")
+	} else {
+		utils.CheckError(err)
+	}
 }

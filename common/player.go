@@ -197,6 +197,15 @@ func (p *PPlayer) GetNumTradee() uint { return p.numTradee }
 //GetCurrentEqValue get current eq. value
 func (p *PPlayer) GetCurrentEqValue() int { return p.Player.CurrentEquipmentValue }
 
+//GetFreezetEqValue get freeze time end eq. value
+func (p *PPlayer) GetFreezetEqValue() int { return p.Player.FreezetimeEndEquipmentValue }
+
+//GetStartEqValue get start time end eq. value
+func (p *PPlayer) GetStartEqValue() int { return p.Player.RoundStartEquipmentValue }
+
+//GetMoney get current money
+func (p *PPlayer) GetMoney() int { return p.Player.Money }
+
 // GetSide get the side of this player
 func (p *PPlayer) GetSide() (player.Team, bool) {
 	teamOk := true
