@@ -13,6 +13,13 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	specifier = ","
+	// if special char is in a string
+	// it will replace with space
+	replaceWithSpace = true
+)
+
 // ############## Printer / writers #############
 // printPlayers print player stats after finished the match
 func (analyser *Analyser) printPlayers() {
@@ -116,7 +123,11 @@ func (analyser *Analyser) writeToFile(path string) {
 		}
 		// teamState := gs.Team(currPlayer.Team)
 		roundPlayed := float32(analyser.roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", currPlayer.Name))
+		playerName := currPlayer.Name
+		if replaceWithSpace {
+			playerName = strings.Replace(playerName, specifier, " ", -1)
+		}
+		sb.WriteString(fmt.Sprintf("%s%s", playerName, specifier))
 
 		var pistolRoundWonPercentage float32
 		pistolROundsWon := float32(currPlayer.GetPistolRoundWon())
@@ -124,7 +135,7 @@ func (analyser *Analyser) writeToFile(path string) {
 		if (pistolROundsWon + pistolROundsLost) > 0 {
 			pistolRoundWonPercentage = pistolROundsWon / (pistolROundsWon + pistolROundsLost)
 		}
-		sb.WriteString(fmt.Sprintf("%s,", fmt.Sprintf("%.2f", pistolRoundWonPercentage)))
+		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.2f", pistolRoundWonPercentage), specifier))
 
 		var hsPercentage float32
 		hsKills := float32(currPlayer.GetNumHSKills())
@@ -132,53 +143,53 @@ func (analyser *Analyser) writeToFile(path string) {
 		if totalKIlls > 0 {
 			hsPercentage = hsKills / totalKIlls
 		}
-		sb.WriteString(fmt.Sprintf("%s,", fmt.Sprintf("%.2f", hsPercentage)))
+		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.2f", hsPercentage), specifier))
 
 		clutchesWon := fmt.Sprintf("%.2f", float32(currPlayer.GetClutchWon())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", clutchesWon))
+		sb.WriteString(fmt.Sprintf("%s%s", clutchesWon, specifier))
 
 		adr := fmt.Sprintf("%.2f", float32(currPlayer.GetTotalDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", adr))
+		sb.WriteString(fmt.Sprintf("%s%s", adr, specifier))
 
 		fpr := fmt.Sprintf("%.2f", float32(currPlayer.GetNumKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", fpr))
+		sb.WriteString(fmt.Sprintf("%s%s", fpr, specifier))
 
 		apr := fmt.Sprintf("%.2f", float32(currPlayer.GetNumAssists())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", apr))
+		sb.WriteString(fmt.Sprintf("%s%s", apr, specifier))
 
 		kdDiff := fmt.Sprintf("%.2f", (float32(currPlayer.GetNumKills())-float32(currPlayer.GetNumDeaths()))/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", kdDiff))
+		sb.WriteString(fmt.Sprintf("%s%s", kdDiff, specifier))
 
 		flashAssist := fmt.Sprintf("%.2f", float32(currPlayer.GetFlashAssist())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", flashAssist))
+		sb.WriteString(fmt.Sprintf("%s%s", flashAssist, specifier))
 
 		blindPlayerKilled := fmt.Sprintf("%.2f", float32(currPlayer.GetPlayerBlindedKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", blindPlayerKilled))
+		sb.WriteString(fmt.Sprintf("%s%s", blindPlayerKilled, specifier))
 
 		blindKills := fmt.Sprintf("%.2f", float32(currPlayer.GetBlindKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", blindKills))
+		sb.WriteString(fmt.Sprintf("%s%s", blindKills, specifier))
 
 		granedaDamage := fmt.Sprintf("%.2f", float32(currPlayer.GetGranadeDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", granedaDamage))
+		sb.WriteString(fmt.Sprintf("%s%s", granedaDamage, specifier))
 
 		fireDamage := fmt.Sprintf("%.2f", float32(currPlayer.GetFireDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", fireDamage))
+		sb.WriteString(fmt.Sprintf("%s%s", fireDamage, specifier))
 
 		timeFlashingOpponent := fmt.Sprintf("%.2f", float32(currPlayer.GetTimeFlashing().Seconds())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", timeFlashingOpponent))
+		sb.WriteString(fmt.Sprintf("%s%s", timeFlashingOpponent, specifier))
 
 		accuracy := float32(currPlayer.GetShotsHit()) / float32(currPlayer.GetShots())
 		accuracyStr := fmt.Sprintf("%.2f", accuracy)
-		sb.WriteString(fmt.Sprintf("%s,", accuracyStr))
+		sb.WriteString(fmt.Sprintf("%s%s", accuracyStr, specifier))
 
 		numTrader := fmt.Sprintf("%.2f", float32(currPlayer.GetNumTrader())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", numTrader))
+		sb.WriteString(fmt.Sprintf("%s%s", numTrader, specifier))
 
 		numTradee := fmt.Sprintf("%.2f", float32(currPlayer.GetNumTradee())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", numTradee))
+		sb.WriteString(fmt.Sprintf("%s%s", numTradee, specifier))
 
 		kast := fmt.Sprintf("%.2f", float32(currPlayer.GetKAST())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s,", kast))
+		sb.WriteString(fmt.Sprintf("%s%s", kast, specifier))
 		winLabel := 0
 		// if there is equality or player team won set to 1
 		if teamWon == common.TeamUnassigned || currPlayer.Team == teamWon {
