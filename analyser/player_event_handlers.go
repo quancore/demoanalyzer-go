@@ -99,7 +99,7 @@ func (analyser *Analyser) handleKill(e events.Kill) {
 		analyser.kastPlayers[killer.SteamID] = true
 
 		// update kill matrix
-		newVictim := &common.KillTuples{tick, victim}
+		newVictim := &common.KillTuples{Tick: tick, Player: victim}
 		analyser.killedPlayers[killerID] = append(analyser.killedPlayers[killerID], newVictim)
 
 		// check trader - tradee relationship
@@ -356,7 +356,6 @@ func (analyser *Analyser) handleBombPlanted(e events.BombPlanted) {
 	} else {
 		analyser.log.WithFields(logging.Fields{
 			"tick":    tick,
-			"name":    planter.Name,
 			"user id": planterID,
 		}).Error("Bomb has been planted by non exist player: ")
 	}
@@ -507,45 +506,52 @@ func (analyser *Analyser) handleClutchSituation(winnerTS p_common.Team, tick int
 }
 
 // handleSpecialRound handle special round won and loss
-func (analyser *Analyser) handleSpecialRound(winnerTS, loserTS p_common.Team) {
+func (analyser *Analyser) handleSpecialRound(winnerT, loserT p_common.Team) {
 	// get team members
 	gs := analyser.parser.GameState()
 	participants := gs.Participants()
-	winnerTeam := participants.TeamMembers(winnerTS)
-	loserTeam := participants.TeamMembers(loserTS)
+	winnerTeamPlayers := participants.TeamMembers(winnerT)
+	loserTeamPlayers := participants.TeamMembers(loserT)
+	winnerTS := gs.Team(winnerT)
+	loserTS := gs.Team(loserT)
+
+	// check team states
+	if winnerTS == nil || loserTS == nil {
+		return
+	}
 
 	var winnerRoundType, loserRoundType common.RoundType
 
 	// find out winner and loser team round type
-	if winnerTS == p_common.TeamTerrorists {
+	if winnerT == p_common.TeamTerrorists {
 		winnerRoundType, loserRoundType = analyser.currentTRoundType, analyser.currentCTRoundType
-	} else if winnerTS == p_common.TeamCounterTerrorists {
+	} else if winnerT == p_common.TeamCounterTerrorists {
 		winnerRoundType, loserRoundType = analyser.currentCTRoundType, analyser.currentTRoundType
 	} else {
 		analyser.log.WithFields(logging.Fields{
-			"winner team": winnerTS,
-			"loser team":  loserTS,
+			"winner team": winnerT,
+			"loser team":  loserT,
 			"tick":        analyser.getGameTick(),
 		}).Error("Invalid team type for handling round type")
 		return
 	}
 
 	analyser.log.WithFields(logging.Fields{
-		"winner team":   winnerTeam[0].TeamState.ClanName,
-		"loser team":    loserTeam[0].TeamState.ClanName,
+		"winner team":   winnerTS.ClanName,
+		"loser team":    loserTS.ClanName,
 		"T round type":  analyser.currentTRoundType,
 		"CT round type": analyser.currentCTRoundType,
 		"tick":          analyser.getGameTick(),
 	}).Info("Handling type of the round")
 
 	// winner team
-	for _, currPlayer := range winnerTeam {
+	for _, currPlayer := range winnerTeamPlayers {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
 			NewPPlayer.NotifySpecialRoundWon(winnerRoundType)
 		}
 	}
 	// loser team
-	for _, currPlayer := range loserTeam {
+	for _, currPlayer := range loserTeamPlayers {
 		if NewPPlayer, ok := analyser.getPlayerByID(currPlayer.SteamID, false); ok {
 			NewPPlayer.NotifySpecialRoundLost(loserRoundType)
 		}

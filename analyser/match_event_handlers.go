@@ -549,7 +549,7 @@ func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
 				"played round": analyser.roundPlayed,
-				"player money": analyser.getAllPlayers()[0].Money,
+				// "player money": analyser.getAllPlayers()[0].Money,
 			}).Error("Money has been invalid for round start")
 			analyser.isCancelled = true
 			return

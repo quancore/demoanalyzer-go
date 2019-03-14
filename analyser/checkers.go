@@ -310,12 +310,12 @@ func (analyser *Analyser) checkParticipantValidity() ([]*p_common.Player, []*p_c
 	teamTerrorist := participants.TeamMembers(p_common.TeamTerrorists)
 	teamCT := participants.TeamMembers(p_common.TeamCounterTerrorists)
 
-	for _, t := range teamTerrorist {
-		analyser.log.WithFields(logging.Fields{
-			"name": t.Name,
-			"team": t.Team,
-		}).Error("player team: ")
-	}
+	// for _, t := range teamTerrorist {
+	// 	analyser.log.WithFields(logging.Fields{
+	// 		"name": t.Name,
+	// 		"team": t.Team,
+	// 	}).Error("player team: ")
+	// }
 	// all := participants.All()
 	// players := participants.Playing()
 
