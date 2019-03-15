@@ -82,6 +82,7 @@ func (analyser *Analyser) writeToFile(path string) {
 	var sb strings.Builder
 	defer file.Close()
 	features := viper.GetString("output.features")
+	analyzerVersion := viper.GetString("output.analyzer_version")
 
 	// if test needed for output
 	istestrequired := viper.GetBool("checkanalyzer")
@@ -89,7 +90,9 @@ func (analyser *Analyser) writeToFile(path string) {
 		analyser.testGameState()
 		analyser.testParticipant()
 	}
-
+	w.WriteString(fmt.Sprintf("analyzer_version=%s", analyzerVersion))
+	w.WriteByte('\n')
+	w.Flush()
 	w.WriteString(features)
 	w.WriteByte('\n')
 	w.Flush()
