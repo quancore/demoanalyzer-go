@@ -86,11 +86,12 @@ func (analyser *Analyser) writeToFile(path string) {
 
 	// if test needed for output
 	istestrequired := viper.GetBool("checkanalyzer")
+	mapname := analyser.mapName
 	if istestrequired {
 		analyser.testGameState()
 		analyser.testParticipant()
 	}
-	w.WriteString(fmt.Sprintf("analyzer_version=%s", analyzerVersion))
+	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s", analyzerVersion, mapname))
 	w.WriteByte('\n')
 	w.Flush()
 	w.WriteString(features)
