@@ -304,15 +304,6 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 
 	// first parse of match
 	if analyser.isFirstParse {
-		if !analyser.checkMoneyValidity() {
-			analyser.log.WithFields(logging.Fields{
-				"tick":         tick,
-				"played round": analyser.roundPlayed,
-				"event name":   eventName,
-			}).Error("Money has been invalid for starting round on match start")
-			analyser.isCancelled = true
-			return
-		}
 
 		analyser.roundStart = tick
 
@@ -326,6 +317,16 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 			analyser.resetMatchVars()
 
 		} else {
+			if !analyser.checkMoneyValidity() {
+				analyser.log.WithFields(logging.Fields{
+					"tick":         tick,
+					"played round": analyser.roundPlayed,
+					"event name":   eventName,
+				}).Error("Money has been invalid for starting round on match start")
+				analyser.isCancelled = true
+				return
+			}
+
 			analyser.log.WithFields(logging.Fields{
 				"tick":       analyser.getGameTick(),
 				"event name": eventName,
