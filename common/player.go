@@ -12,6 +12,8 @@ import (
 type PPlayer struct {
 	// base struct added in composition
 	*player.Player
+	// old team
+	oldTeam player.Team
 	// The number of pistol rounds won by the player
 	pistolRoundWon uint
 	// The number of pistol rounds lost by the player
@@ -87,6 +89,9 @@ func NewPPlayer(player *player.Player) *PPlayer {
 	return &PPlayer{Player: player}
 }
 
+// GetOldTeam get old team
+func (p *PPlayer) GetOldTeam() player.Team { return p.oldTeam }
+
 // GetUserID get user id
 func (p *PPlayer) GetUserID() int { return p.UserID }
 
@@ -95,6 +100,9 @@ func (p *PPlayer) GetUserName() string { return p.Name }
 
 // GetSteamID get steam id
 func (p *PPlayer) GetSteamID() int64 { return p.SteamID }
+
+// SetOldTeam set old team
+func (p *PPlayer) SetOldTeam(oldTeam player.Team) { p.oldTeam = oldTeam }
 
 // SetUserID get user id
 func (p *PPlayer) SetUserID(newuserid int) { p.UserID = newuserid }

@@ -54,6 +54,7 @@ func (analyser *Analyser) getAllPlayers() []*common.PPlayer {
 
 	for uid, discpplayer := range analyser.disconnectedPlayers {
 		if _, ok := analyser.players[uid]; !ok {
+			discpplayer.Player.Team = discpplayer.Player.GetOldTeam()
 			allPLayers = append(allPLayers, discpplayer.Player)
 		}
 	}

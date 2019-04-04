@@ -48,6 +48,7 @@ func (analyser *Analyser) printPlayers() {
 		analyser.log.WithFields(logging.Fields{
 			"name":                  currPlayer.Name,
 			"team":                  currPlayer.TeamState.ClanName,
+			"team number":           currPlayer.Team,
 			"kill":                  currPlayer.GetNumKills(),
 			"parser kill":           currPlayer.Player.AdditionalPlayerInformation.Kills,
 			"blind kill":            currPlayer.GetBlindKills(),
@@ -110,11 +111,18 @@ func (analyser *Analyser) writeToFile(path string) {
 	}).Info("Writing to file: ")
 
 	for _, currPlayer := range analyser.getAllPlayers() {
-		if currPlayer.TeamState == nil {
+		// if currPlayer.TeamState == nil {
+		// 	analyser.log.WithFields(logging.Fields{
+		// 		"name": currPlayer.Name,
+		// 		"team": currPlayer.Team,
+		// 	}).Info("Team state is null for player ")
+		// 	continue
+		if !(analyser.checkTeamValidity(currPlayer.Team)) {
 			analyser.log.WithFields(logging.Fields{
-				"name": currPlayer.Name,
-				"team": currPlayer.Team,
-			}).Info("Team state is null for player ")
+				"name":     currPlayer.Name,
+				"team":     currPlayer.Team,
+				"old team": currPlayer.GetOldTeam(),
+			}).Info("Player team and old team is wrong ")
 			continue
 		} else if currPlayer.GetNumKills() <= 0 && currPlayer.GetNumDeaths() <= 0 {
 			analyser.log.WithFields(logging.Fields{

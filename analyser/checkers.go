@@ -384,4 +384,12 @@ func (analyser *Analyser) checkPlayerTeamValidity(NewPlayer *p_common.Player) bo
 	return true
 }
 
+// checkTeamValidity check whether a team is a valid team
+func (analyser *Analyser) checkTeamValidity(Team p_common.Team) bool {
+	if Team == p_common.TeamTerrorists || Team == p_common.TeamCounterTerrorists {
+		return true
+	}
+	return false
+}
+
 // #####################################

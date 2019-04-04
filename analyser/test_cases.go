@@ -14,17 +14,25 @@ func (analyser *Analyser) testParticipant() {
 
 	for _, player := range allplayers {
 		if player.GetNumKills() > 0 && player.GetNumDeaths() > 0 {
+			analyser.log.WithFields(logging.Fields{
+				"name":     player.Name,
+				"team":     player.Team,
+				"old team": player.GetOldTeam(),
+			}).Info("Checking player")
 			if player.Team == common.TeamTerrorists {
 				numActiveT++
 			} else if player.Team == common.TeamCounterTerrorists {
 				numActiveCT++
 			}
 		} else {
-			analyser.log.WithFields(logging.Fields{
-				"name":  player.Name,
-				"kill":  player.GetNumKills(),
-				"death": player.GetNumDeaths(),
-			}).Error("Player has wrong stats")
+			if player.Team == common.TeamTerrorists || player.Team == common.TeamCounterTerrorists {
+				analyser.log.WithFields(logging.Fields{
+					"name":  player.Name,
+					"kill":  player.GetNumKills(),
+					"death": player.GetNumDeaths(),
+				}).Error("Player has wrong stats")
+			}
+
 		}
 	}
 

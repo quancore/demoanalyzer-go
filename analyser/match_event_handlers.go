@@ -439,6 +439,7 @@ func (analyser *Analyser) handlePlayerDisconnect(e events.PlayerDisconnected) {
 		}).Info("Player has been disconnected: ")
 
 		// add player to disconnected player list
+		currentPPlayer.SetOldTeam(playerSide)
 		disconnected := &common.DisconnectedTuple{DisconnectedTick: tick, Player: currentPPlayer}
 		analyser.disconnectedPlayers[currentPLayerID] = disconnected
 		// }
