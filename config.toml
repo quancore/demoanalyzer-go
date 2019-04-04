@@ -12,7 +12,7 @@ is_method_name = false
 
 [output]
 features = "Name,Pistol_Rounds_Won_Percentage,HS_Percentage,Clutches_Won,ADR,FPR,APR,K_D_Diff_Round,Flash_Assists_Round,Blind_Players_Killed_Round,Blind_Kills,Grenade_Damage_Round,Fire_Damage_Round,Time_Flashing_Opponents_Round,Accuracy,Num_Times_Trader,Num_Times_Tradee,KAST,Won"
-analyzer_version = "0.2.1"
+analyzer_version = "0.2.2"
 
 [test]
 demofile_path = "/home/baran/Desktop/demo_files/working_demos"
