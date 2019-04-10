@@ -84,10 +84,22 @@ func (analyser *Analyser) writeToFile(path string) {
 	defer file.Close()
 	features := viper.GetString("output.features")
 	analyzerVersion := viper.GetString("output.analyzer_version")
+	mapnameAlias := viper.GetStringMapString("mapnameAlias")
 
 	// if test needed for output
 	istestrequired := viper.GetBool("checkanalyzer")
 	mapname := analyser.mapName
+	analyser.log.WithFields(logging.Fields{
+		"name": mapname,
+	}).Info("Mapname: ")
+
+	if newMapname, ok := mapnameAlias[mapname]; ok {
+		analyser.log.WithFields(logging.Fields{
+			"new name": newMapname,
+			"old name": mapname,
+		}).Info("Mapname changed: ")
+		mapname = newMapname
+	}
 	if istestrequired {
 		analyser.testGameState()
 		analyser.testParticipant()
