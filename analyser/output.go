@@ -159,7 +159,7 @@ func (analyser *Analyser) writeToFile(path string) {
 		if (pistolROundsWon + pistolROundsLost) > 0 {
 			pistolRoundWonPercentage = pistolROundsWon / (pistolROundsWon + pistolROundsLost)
 		}
-		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.2f", pistolRoundWonPercentage), specifier))
+		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", pistolRoundWonPercentage), specifier))
 
 		var hsPercentage float32
 		hsKills := float32(currPlayer.GetNumHSKills())
@@ -167,52 +167,52 @@ func (analyser *Analyser) writeToFile(path string) {
 		if totalKIlls > 0 {
 			hsPercentage = hsKills / totalKIlls
 		}
-		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.2f", hsPercentage), specifier))
+		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", hsPercentage), specifier))
 
-		clutchesWon := fmt.Sprintf("%.2f", float32(currPlayer.GetClutchWon())/roundPlayed)
+		clutchesWon := fmt.Sprintf("%.3f", float32(currPlayer.GetClutchWon())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", clutchesWon, specifier))
 
-		adr := fmt.Sprintf("%.2f", float32(currPlayer.GetTotalDamage())/roundPlayed)
+		adr := fmt.Sprintf("%.3f", float32(currPlayer.GetTotalDamage())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", adr, specifier))
 
-		fpr := fmt.Sprintf("%.2f", float32(currPlayer.GetNumKills())/roundPlayed)
+		fpr := fmt.Sprintf("%.3f", float32(currPlayer.GetNumKills())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", fpr, specifier))
 
-		apr := fmt.Sprintf("%.2f", float32(currPlayer.GetNumAssists())/roundPlayed)
+		apr := fmt.Sprintf("%.3f", float32(currPlayer.GetNumAssists())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", apr, specifier))
 
-		kdDiff := fmt.Sprintf("%.2f", (float32(currPlayer.GetNumKills())-float32(currPlayer.GetNumDeaths()))/roundPlayed)
+		kdDiff := fmt.Sprintf("%.3f", (float32(currPlayer.GetNumKills())-float32(currPlayer.GetNumDeaths()))/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", kdDiff, specifier))
 
-		flashAssist := fmt.Sprintf("%.2f", float32(currPlayer.GetFlashAssist())/roundPlayed)
+		flashAssist := fmt.Sprintf("%.3f", float32(currPlayer.GetFlashAssist())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", flashAssist, specifier))
 
-		blindPlayerKilled := fmt.Sprintf("%.2f", float32(currPlayer.GetPlayerBlindedKills())/roundPlayed)
+		blindPlayerKilled := fmt.Sprintf("%.3f", float32(currPlayer.GetPlayerBlindedKills())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", blindPlayerKilled, specifier))
 
-		blindKills := fmt.Sprintf("%.2f", float32(currPlayer.GetBlindKills())/roundPlayed)
+		blindKills := fmt.Sprintf("%.3f", float32(currPlayer.GetBlindKills())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", blindKills, specifier))
 
-		granedaDamage := fmt.Sprintf("%.2f", float32(currPlayer.GetGranadeDamage())/roundPlayed)
+		granedaDamage := fmt.Sprintf("%.3f", float32(currPlayer.GetGranadeDamage())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", granedaDamage, specifier))
 
-		fireDamage := fmt.Sprintf("%.2f", float32(currPlayer.GetFireDamage())/roundPlayed)
+		fireDamage := fmt.Sprintf("%.3f", float32(currPlayer.GetFireDamage())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", fireDamage, specifier))
 
-		timeFlashingOpponent := fmt.Sprintf("%.2f", float32(currPlayer.GetTimeFlashing().Seconds())/roundPlayed)
+		timeFlashingOpponent := fmt.Sprintf("%.3f", float32(currPlayer.GetTimeFlashing().Seconds())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", timeFlashingOpponent, specifier))
 
 		accuracy := float32(currPlayer.GetShotsHit()) / float32(currPlayer.GetShots())
-		accuracyStr := fmt.Sprintf("%.2f", accuracy)
+		accuracyStr := fmt.Sprintf("%.3f", accuracy)
 		sb.WriteString(fmt.Sprintf("%s%s", accuracyStr, specifier))
 
-		numTrader := fmt.Sprintf("%.2f", float32(currPlayer.GetNumTrader())/roundPlayed)
+		numTrader := fmt.Sprintf("%.3f", float32(currPlayer.GetNumTrader())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", numTrader, specifier))
 
-		numTradee := fmt.Sprintf("%.2f", float32(currPlayer.GetNumTradee())/roundPlayed)
+		numTradee := fmt.Sprintf("%.3f", float32(currPlayer.GetNumTradee())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", numTradee, specifier))
 
-		kast := fmt.Sprintf("%.2f", float32(currPlayer.GetKAST())/roundPlayed)
+		kast := fmt.Sprintf("%.3f", float32(currPlayer.GetKAST())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", kast, specifier))
 		winLabel := 0
 		// if there is equality or player team won set to 1
