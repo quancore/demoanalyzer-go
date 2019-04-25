@@ -169,8 +169,8 @@ func (analyser *Analyser) writeToFile(path string) {
 		}
 		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", hsPercentage), specifier))
 
-		clutchesWon := fmt.Sprintf("%.3f", float32(currPlayer.GetClutchWon())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", clutchesWon, specifier))
+		// clutchesWon := fmt.Sprintf("%.3f", int(currPlayer.GetClutchWon())/roundPlayed)
+		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprint(currPlayer.GetClutchWon()), specifier))
 
 		adr := fmt.Sprintf("%.3f", float32(currPlayer.GetTotalDamage())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", adr, specifier))
