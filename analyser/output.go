@@ -202,7 +202,12 @@ func (analyser *Analyser) writeToFile(path string) {
 		timeFlashingOpponent := fmt.Sprintf("%.3f", float32(currPlayer.GetTimeFlashing().Seconds())/roundPlayed)
 		sb.WriteString(fmt.Sprintf("%s%s", timeFlashingOpponent, specifier))
 
-		accuracy := float32(currPlayer.GetShotsHit()) / float32(currPlayer.GetShots())
+		var accuracy float32
+		shotsHit := float32(currPlayer.GetShotsHit())
+		totalShot := float32(currPlayer.GetShots())
+		if totalShot > 0 {
+			accuracy = shotsHit / totalShot
+		}
 		accuracyStr := fmt.Sprintf("%.3f", accuracy)
 		sb.WriteString(fmt.Sprintf("%s%s", accuracyStr, specifier))
 
