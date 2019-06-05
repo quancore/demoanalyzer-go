@@ -62,6 +62,18 @@ func (analyser *Analyser) getAllPlayers() []*common.PPlayer {
 	return allPLayers
 }
 
+// getAllConnectedPlayers return all connected valid players
+func (analyser *Analyser) getAllConnectedPlayers() []*common.PPlayer {
+
+	var allPLayers []*common.PPlayer
+
+	for _, pplayer := range analyser.players {
+		allPLayers = append(allPLayers, pplayer)
+	}
+
+	return allPLayers
+}
+
 // getTeams get t team and ct team players
 func (analyser *Analyser) getTeams(isdisconnected bool) ([]*common.PPlayer, []*common.PPlayer) {
 	var tTeam []*common.PPlayer
@@ -90,34 +102,22 @@ func (analyser *Analyser) getTeams(isdisconnected bool) ([]*common.PPlayer, []*c
 	return tTeam, ctTeam
 }
 
-// getPlayerId get player id from players sent in an event
-// used for kill event
-func (analyser *Analyser) getPlayerID(victim, killer *p_common.Player, eventName string) (int64, int64, bool, bool) {
-	var victimID, killerID int64
-	var victimName, killerName string
-	var victimOK, killerOK bool
+// getSinglePlayerID get player id from player sent in an event
+func (analyser *Analyser) getSinglePlayerID(player *p_common.Player, eventName string) (int64, bool) {
+	var playerID int64
+	var playerOK bool
 
-	if victim != nil {
-		victimID = victim.SteamID
-		victimName = victim.Name
-		victimOK = true
-	}
-	if killer != nil {
-		killerID = killer.SteamID
-		killerName = killer.Name
-		killerOK = true
-	}
-
-	if killer == nil || victim == nil {
+	if player == nil {
 		analyser.log.WithFields(logging.Fields{
-			"event":       eventName,
-			"tick":        analyser.getGameTick(),
-			"killer name": killerName,
-			"victim name": victimName,
-		}).Error("Victim or killer is nill for event: ")
+			"event": eventName,
+			"tick":  analyser.getGameTick(),
+		}).Error("Player is nill for event: ")
+	} else {
+		playerID = player.SteamID
+		playerOK = true
 	}
 
-	return victimID, killerID, victimOK, killerOK
+	return playerID, playerOK
 }
 
 func (analyser *Analyser) getWinnerTeam() p_common.Team {

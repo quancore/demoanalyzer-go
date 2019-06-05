@@ -110,26 +110,30 @@ func (analyser *Analyser) checkEventValidity(victim, killer *p_common.Player, ev
 	var victimOK, killerOK bool
 	var victimP, killerP *common.PPlayer
 
-	// get player pointers
-	victimID := victim.SteamID
-	killerID := killer.SteamID
-	victimP, victimOK = analyser.getPlayerByID(victimID, allPlayer)
-	killerP, killerOK = analyser.getPlayerByID(killerID, allPlayer)
-
-	// check if victim and attacker exist
-	if !victimOK || !killerOK {
+	if killer == nil || victim == nil {
 		analyser.log.WithFields(logging.Fields{
-			"event name":  eventName,
-			"tick":        analyser.getGameTick(),
-			"victim ok":   victimOK,
-			"attacker ok": killerOK,
-			"victim name": victim.Name,
-			"killer name": killer.Name,
-		}).Error("Victim or attacker is undefined")
+			"event": eventName,
+			"tick":  analyser.getGameTick(),
+		}).Error("Victim or killer is nill for event: ")
+	} else {
+		// get player pointers
+		victimID := victim.SteamID
+		killerID := killer.SteamID
+		victimP, victimOK = analyser.getPlayerByID(victimID, allPlayer)
+		killerP, killerOK = analyser.getPlayerByID(killerID, allPlayer)
 
-		return nil, nil, victimOK, killerOK
+		// check if victim and attacker exist
+		if !victimOK || !killerOK {
+			analyser.log.WithFields(logging.Fields{
+				"event name":  eventName,
+				"tick":        analyser.getGameTick(),
+				"victim ok":   victimOK,
+				"attacker ok": killerOK,
+				"victim name": victim.Name,
+				"killer name": killer.Name,
+			}).Error("Victim or attacker is undefined")
+		}
 	}
-
 	return victimP, killerP, victimOK, killerOK
 
 }
@@ -193,8 +197,11 @@ func (analyser *Analyser) checkMatchContinuity() bool {
 				"team terrorist":     tScore,
 				"team ct terrorist":  ctScore,
 			}).Info("Match is over. ")
+			analyser.notifyAllMatchEnd(tScore, ctScore)
 			analyser.printPlayers()
 			analyser.writeToFile(analyser.outPath)
+			analyser.printHeadmap()
+			analyser.clusterPoints()
 			analyser.isOvertime = false
 			analyser.matchEnded = true
 			// set file succesfully analyzed
@@ -234,24 +241,44 @@ func (analyser *Analyser) checkClutchSituation() {
 	countALiveCT := len(analyser.ctAlive)
 
 	// possible clutch for ct
-	if !analyser.isCTPossibleClutch && (countALiveT > 0 && countALiveCT == 1) {
-		analyser.isCTPossibleClutch = true
+	if !analyser.isCTPossibleClutch && (countALiveCT == 1) {
+		if countALiveT > 0 {
+			analyser.isCTPossibleClutch = true
+		}
 		for _, playerPtr := range analyser.ctAlive {
-			analyser.ctClutchPlayer = playerPtr
+			if analyser.isCTPossibleClutch == true {
+				analyser.ctClutchPlayer = playerPtr
+				analyser.log.WithFields(logging.Fields{
+					"name": playerPtr.Name,
+				}).Info("Possible clutch player for ct")
+			}
 			analyser.log.WithFields(logging.Fields{
 				"name": playerPtr.Name,
-			}).Info("Possible clutch player for ct")
+				"team": "counter terorist",
+			}).Info("Last player alive")
+			playerPtr.NotifyLastMemberSurvived()
+
 		}
 	}
 
 	// possible clutch for t
-	if !analyser.isTPossibleClutch && (countALiveCT > 0 && countALiveT == 1) {
-		analyser.isTPossibleClutch = true
+	if !analyser.isTPossibleClutch && (countALiveT == 1) {
+		if countALiveCT > 0 {
+			analyser.isTPossibleClutch = true
+		}
 		for _, playerPtr := range analyser.tAlive {
-			analyser.tClutchPlayer = playerPtr
+			if analyser.isTPossibleClutch == true {
+				analyser.tClutchPlayer = playerPtr
+				analyser.log.WithFields(logging.Fields{
+					"name": playerPtr.Name,
+				}).Error("Possible clutch player for t")
+			}
 			analyser.log.WithFields(logging.Fields{
 				"name": playerPtr.Name,
-			}).Error("Possible clutch player ")
+				"team": "terorist",
+			}).Info("Last player alive")
+			playerPtr.NotifyLastMemberSurvived()
+
 		}
 	}
 

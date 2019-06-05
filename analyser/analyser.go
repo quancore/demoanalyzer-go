@@ -8,10 +8,12 @@ import (
 	"github.com/gogo/protobuf/proto"
 	dem "github.com/markus-wa/demoinfocs-golang"
 	p_common "github.com/markus-wa/demoinfocs-golang/common"
+	metadata "github.com/markus-wa/demoinfocs-golang/metadata"
 	"github.com/markus-wa/demoinfocs-golang/msg"
 	common "github.com/quancore/demoanalyzer-go/common"
 	utils "github.com/quancore/demoanalyzer-go/utils"
 	logging "github.com/sirupsen/logrus"
+	"github.com/spf13/viper"
 )
 
 // ########### Constants #######################
@@ -55,10 +57,6 @@ type Analyser struct {
 	swapCTscore int
 	// min number of rounds played not to reset a match
 	minPlayedRound int
-	// current round type for t team
-	currentTRoundType common.RoundType
-	// current round type for ct team
-	currentCTRoundType common.RoundType
 	// round number lastly score swappped
 	lastScoreSwapped int
 	// sometimes match start event called twice so
@@ -79,6 +77,8 @@ type Analyser struct {
 	tAlive map[int64]*common.PPlayer
 	// keep round based player did kast
 	kastPlayers map[int64]bool
+	// droppable items dropped this round
+	droppedItems map[int64]*common.ItemDrop
 
 	// t player pointer possible to make a clutch
 	tClutchPlayer *common.PPlayer
@@ -102,6 +102,12 @@ type Analyser struct {
 	isTPossibleClutch bool
 	// clutch situation flag for ct
 	isCTPossibleClutch bool
+	// // current round type for t team
+	currentTRoundType common.RoundType
+	// // current round type for ct team
+	currentCTRoundType common.RoundType
+	// type of the current round
+	// currentRoundType common.RoundType
 
 	// variables to check validity of a round
 	//Truth value for whether we're currently in a round
@@ -110,6 +116,10 @@ type Analyser struct {
 	isCancelled bool
 	// Truth value whether a player has been hurt
 	isPlayerHurt bool
+	// Truth value whether first kill done by T in the round
+	isTFirstKill bool
+	// Truth value whether first kill done by CT in the round
+	isCTFirstKill bool
 	// Truth value for a weapon fired for this round
 	isWeaponFired bool
 	// Truth value to check an event occured during a round
@@ -124,6 +134,10 @@ type Analyser struct {
 	// ******** parser related vars ***
 	// header related information
 	mapName string
+	// metadata of Header
+	mapMetadata *metadata.Map
+	// tickrate of demo file
+	tickRate float64
 	// main parser to parse demofile
 	parser *dem.Parser
 	// logger (converted struct var for concurent logging)
@@ -149,14 +163,26 @@ type Analyser struct {
 	roundStart int
 	// store round end tick
 	roundEnd int
-	// store round end tick
+	// store round official end tick
 	roundOffEnd int
 	// store valid rounds
 	// round number: (start tick , end tick, scores)
 	validRounds map[int]*common.RoundTuples
 	// current valid round tuple
 	curValidRound *common.RoundTuples
-	// ************************************
+	// ***********************************************
+	// ****** kill positions *************************
+	killPositions []*common.KillPosition
+	roundWinners  map[int]p_common.Team
+
+	// ***********************************************
+	// scheduler for custom events
+	customScheduler *Scheduler
+	// ***********************************************
+	// ******** Alg. related const *******************
+	afterFirstKill  float64
+	beforeCrosshair float64
+	// ***********************************************
 }
 
 // ######## public interface #######################
@@ -181,12 +207,15 @@ func NewAnalyser(demostream io.Reader, logPath, outPath string, ismethodname, mu
 	analyser.cfg = cfg
 	analyser.outPath = outPath
 	analyser.log = utils.InitLogger(logPath, ismethodname, multiplewriter)
+
 	analyser.log.Info("Analyser has been created")
 
 	// create map to store valid rounds
 	analyser.validRounds = make(map[int]*common.RoundTuples)
 
 	analyser.resetAnalyserVars()
+	// init alg related const. vars
+	analyser.initAlgVars()
 
 	return analyser
 
@@ -199,7 +228,12 @@ func (analyser *Analyser) handleHeader() {
 	header, err := analyser.parser.ParseHeader()
 	utils.CheckError(err)
 	analyser.mapName = header.MapName
-
+	var tickrate float64
+	if tickrate = header.TickRate(); tickrate == 0 {
+		analyser.log.Info("Tick rate was 0. Setup to 128")
+		tickrate = 128
+	}
+	analyser.tickRate = tickrate
 	analyser.log.WithFields(logging.Fields{
 		"server name": header.ServerName,
 		"client name": header.ClientName,
@@ -212,20 +246,31 @@ func (analyser *Analyser) handleHeader() {
 func (analyser *Analyser) Analyze() {
 	// first handle parser header
 	analyser.handleHeader()
+	// create scheduler for custom events
+	analyser.customScheduler = NewScheduler(analyser.tickRate)
 	analyser.log.Info("Analyzing first time")
 	analyser.isFirstParse = true
 	analyser.registerNetMessageHandlers()
 	analyser.registerMatchEventHandlers()
+	analyser.registerFirstPlayerEventHandlers()
+
 	for hasMoreFrames, err := true, error(nil); hasMoreFrames; hasMoreFrames, err = analyser.parser.ParseNextFrame() {
 		utils.CheckError(err)
 	}
 
 	analyser.log.Info("Analyzing second time")
 	analyser.isFirstParse = false
+	if mapMetadata, ok := metadata.MapNameToMap[analyser.mapName]; ok {
+		analyser.log.WithFields(logging.Fields{
+			"map name": analyser.mapName,
+		}).Info("Map metadata has been initilized.")
+		analyser.mapMetadata = &mapMetadata
+	}
+
 	analyser.resetAnalyser()
 	analyser.registerMatchEventHandlers()
 	analyser.registerPlayerEventHandlers()
-
+	analyser.registerScheduler()
 	// beacuse there is no event counting as match start on
 	// second parsing, we are calling reset match vars externally
 	// on the beginning of second parser
@@ -243,4 +288,10 @@ func (analyser *Analyser) Analyze() {
 	} else {
 		utils.CheckError(err)
 	}
+}
+
+// initAlgVars init algorithm related vars by using config file
+func (analyser *Analyser) initAlgVars() {
+	analyser.afterFirstKill = viper.GetFloat64("algorithm.after_first_kill")
+	analyser.beforeCrosshair = viper.GetFloat64("algorithm.before_crashair")
 }

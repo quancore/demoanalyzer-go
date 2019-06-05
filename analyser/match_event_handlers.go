@@ -170,13 +170,19 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 			analyser.tScore = analyser.curValidRound.TScore
 			analyser.ctScore = analyser.curValidRound.CTScore
 
+			// calculate round time
+			roundDurationTick := (analyser.roundEnd - analyser.roundStart)
+			roundDurationSecond := common.TickToSeconds(roundDurationTick, analyser.tickRate)
+
 			analyser.log.WithFields(logging.Fields{
-				"t score":      analyser.tScore,
-				"ct score":     analyser.ctScore,
-				"tick":         tick,
-				"winner":       common.GetSideString(winnerTS.Team()),
-				"event":        eventString,
-				"round number": analyser.roundPlayed,
+				"t score":            analyser.tScore,
+				"ct score":           analyser.ctScore,
+				"tick":               tick,
+				"winner":             common.GetSideString(winnerTS.Team()),
+				"event":              eventString,
+				"round number":       analyser.roundPlayed,
+				"round time tick":    roundDurationTick,
+				"round time seconds": roundDurationSecond.Seconds(),
 			}).Info("Round is ended.")
 
 			// update last round called
@@ -185,19 +191,17 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 			// check match is ended if there is no official end for
 			// this round and also handle KAST as well
 			if analyser.roundOffEnd <= 0 {
-				// notify kast to alive players
-				for _, alive := range analyser.ctAlive {
-					analyser.kastPlayers[alive.SteamID] = true
-				}
 
-				for _, alive := range analyser.tAlive {
-					analyser.kastPlayers[alive.SteamID] = true
+				analyser.notifyRoundEnd(analyser.roundPlayed, winnerTS.Team(), roundDurationSecond)
+				if analyser.winnerTeam == p_common.TeamTerrorists || analyser.winnerTeam == p_common.TeamCounterTerrorists {
+					analyser.handleClutchSituation(analyser.winnerTeam, tick)
 				}
-
-				analyser.handleClutchSituation(winnerTS.Team(), tick)
 				analyser.handleKAST()
 				analyser.checkMatchContinuity()
 			}
+
+			// record winner of the round
+			analyser.roundWinners[analyser.roundPlayed] = winnerTS.Team()
 
 			// reset round end for duplicate calls in same tick
 			analyser.roundEnd = 0
@@ -397,7 +401,7 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 			return
 		}
 		// create new player and append to the list
-		NewPPlayer = common.NewPPlayer(NewPlayer)
+		NewPPlayer = common.NewPPlayer(NewPlayer, analyser.log)
 
 		analyser.log.WithFields(logging.Fields{
 			"name":        NewPlayer.Name,
@@ -607,20 +611,18 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 		if analyser.roundOffEnd != tick {
 			return
 		}
+		// calculate round duration
+		roundDurationTick := (analyser.roundOffEnd - analyser.roundStart)
+		roundDurationSecond := common.TickToSeconds(roundDurationTick, analyser.tickRate)
+
 		analyser.log.WithFields(logging.Fields{
-			"tick":         tick,
-			"round number": analyser.roundPlayed,
+			"tick":               tick,
+			"round number":       analyser.roundPlayed,
+			"round time tick":    roundDurationTick,
+			"round time seconds": roundDurationSecond.Seconds(),
 		}).Info("Round has officially ended.")
 
-		// notify kast to alive players
-		for _, alive := range analyser.ctAlive {
-			analyser.kastPlayers[alive.SteamID] = true
-		}
-
-		for _, alive := range analyser.tAlive {
-			analyser.kastPlayers[alive.SteamID] = true
-		}
-
+		analyser.notifyRoundEnd(analyser.roundPlayed, analyser.winnerTeam, roundDurationSecond)
 		analyser.handleKAST()
 		// if there is a winner handle clutch as well
 		if analyser.winnerTeam == p_common.TeamTerrorists || analyser.winnerTeam == p_common.TeamCounterTerrorists {

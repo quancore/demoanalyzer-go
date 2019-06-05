@@ -3,6 +3,7 @@ package utils
 
 import (
 	"fmt"
+	"go/build"
 	"io"
 	"os"
 	"runtime"
@@ -17,6 +18,15 @@ func CheckError(err error) {
 	if err != nil {
 		log.Panic(err)
 	}
+}
+
+// GetGoPath get current go path in the system
+func GetGoPath() string {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		gopath = build.Default.GOPATH
+	}
+	return gopath
 }
 
 // // InitLogger setup logger for both printing file and console

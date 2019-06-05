@@ -46,31 +46,66 @@ func (analyser *Analyser) printPlayers() {
 		analyser.log.Info("**************************************")
 		analyser.log.Info(currPlayer.Name)
 		analyser.log.WithFields(logging.Fields{
-			"name":                  currPlayer.Name,
-			"team":                  currPlayer.TeamState.ClanName,
-			"team number":           currPlayer.Team,
-			"kill":                  currPlayer.GetNumKills(),
-			"parser kill":           currPlayer.Player.AdditionalPlayerInformation.Kills,
-			"blind kill":            currPlayer.GetBlindKills(),
-			"blinded player killed": currPlayer.GetPlayerBlindedKills(),
-			"hs kll":                currPlayer.GetNumHSKills(),
-			"assist":                currPlayer.GetNumAssists(),
-			"parser assist":         currPlayer.Player.AdditionalPlayerInformation.Assists,
-			"flash assist":          currPlayer.GetFlashAssist(),
-			"death":                 currPlayer.GetNumDeaths(),
-			"parser death":          currPlayer.Player.AdditionalPlayerInformation.Deaths,
-			"clutch won":            currPlayer.GetClutchWon(),
-			"pistol won":            currPlayer.GetPistolRoundWon(),
-			"eco won":               currPlayer.GetEcoRoundWon(),
-			"force buy won":         currPlayer.GetForceBuyRoundWon(),
-			"granade damage":        currPlayer.GetGranadeDamage(),
-			"fire damage":           currPlayer.GetFireDamage(),
-			"time flashing":         currPlayer.GetTimeFlashing(),
-			"kast":                  currPlayer.GetKAST(),
-			"num trader":            currPlayer.GetNumTrader(),
-			"num tradee":            currPlayer.GetNumTradee(),
-			"bomb defused":          currPlayer.GetNumBombDefused(),
-			"bomb planted":          currPlayer.GetNumBombPlanted(),
+			"name":                            currPlayer.Name,
+			"team":                            currPlayer.TeamState.ClanName,
+			"team number":                     currPlayer.Team,
+			"kill":                            currPlayer.GetNumKills(),
+			"first kill":                      currPlayer.GetNumFirstKills(),
+			"parser kill":                     currPlayer.Player.AdditionalPlayerInformation.Kills,
+			"blind kill":                      currPlayer.GetBlindKills(),
+			"blinded player killed":           currPlayer.GetPlayerBlindedKills(),
+			"hs kll":                          currPlayer.GetNumHSKills(),
+			"assist":                          currPlayer.GetNumAssists(),
+			"parser assist":                   currPlayer.Player.AdditionalPlayerInformation.Assists,
+			"flash assist":                    currPlayer.GetFlashAssist(),
+			"death":                           currPlayer.GetNumDeaths(),
+			"parser death":                    currPlayer.Player.AdditionalPlayerInformation.Deaths,
+			"clutch won":                      currPlayer.GetClutchWon(),
+			"pistol won":                      currPlayer.GetPistolRoundWon(),
+			"eco won":                         currPlayer.GetEcoRoundWon(),
+			"force buy won":                   currPlayer.GetForceBuyRoundWon(),
+			"granade damage":                  currPlayer.GetGranadeDamage(),
+			"fire damage":                     currPlayer.GetFireDamage(),
+			"time flashing":                   currPlayer.GetTimeFlashing(),
+			"kast":                            currPlayer.GetKAST(),
+			"num trader":                      currPlayer.GetNumTrader(),
+			"num tradee":                      currPlayer.GetNumTradee(),
+			"bomb defused":                    currPlayer.GetNumBombDefused(),
+			"bomb planted":                    currPlayer.GetNumBombPlanted(),
+			"num MVP":                         currPlayer.GetMVP(),
+			"total money saved":               currPlayer.GetSavedMoney(),
+			"kill sniper":                     currPlayer.GetSRifleKills(),
+			"kill melee":                      currPlayer.GetMeleeKills(),
+			"kill shotgun":                    currPlayer.GetShotgunKills(),
+			"kill assult":                     currPlayer.GetARifleeKills(),
+			"kill pistol":                     currPlayer.GetPistolKills(),
+			"kill machine gun":                currPlayer.GetMachineGunKills(),
+			"kill smg":                        currPlayer.GetSmgKills(),
+			"hit head":                        currPlayer.GetNumHeadHit(),
+			"hit stomach":                     currPlayer.GetNumStomachHit(),
+			"hit chest":                       currPlayer.GetNumChestHit(),
+			"hit legs":                        currPlayer.GetNumLegsHit(),
+			"hit arms":                        currPlayer.GetNumArmsHit(),
+			"unit damage cost":                (currPlayer.GetTotalDamageCost() / float32(currPlayer.GetTotalDamage())),
+			"avarage kill distance":           currPlayer.GetTotalKillDistance() / float32(currPlayer.GetNumKills()),
+			"player saved":                    currPlayer.GetSavedNum(),
+			"player won health:":              currPlayer.GetTotalHealthWon(),
+			"player lost health:":             currPlayer.GetTotalHealthLost(),
+			"number alive rounds":             currPlayer.GetLastMemberSurvived(),
+			"time hurt to kill":               currPlayer.GetTimeHurtToKill().Seconds(),
+			"spray sniper":                    currPlayer.GetSRifleSpray(),
+			"spray shotgun":                   currPlayer.GetShotgunSpray(),
+			"spray assult":                    currPlayer.GetARifleSpray(),
+			"spray pistol":                    currPlayer.GetPistolSpray(),
+			"spray machine gun":               currPlayer.GetMachineGunSpray(),
+			"spray smg":                       currPlayer.GetSmgSpray(),
+			"round win percentage":            currPlayer.GetRoundWinPercentage(),
+			"total round duration":            currPlayer.GetTotalRoundWinTime(),
+			"duck kill":                       currPlayer.GetDuckKill(),
+			"total distance to killed member": currPlayer.GetTotalKillDistance(),
+			"killed snipers":                  currPlayer.GetNumSniperKill(),
+			"dropped item val":                currPlayer.GetDroppedItemVal(),
+			"picked item val":                 currPlayer.GetPickedItemVal(),
 		}).Info("Player: ")
 	}
 }
@@ -85,6 +120,7 @@ func (analyser *Analyser) writeToFile(path string) {
 	features := viper.GetString("output.features")
 	analyzerVersion := viper.GetString("output.analyzer_version")
 	mapnameAlias := viper.GetStringMapString("mapnameAlias")
+	roundPlayed := analyser.roundPlayed
 
 	// if test needed for output
 	istestrequired := viper.GetBool("checkanalyzer")
@@ -104,7 +140,7 @@ func (analyser *Analyser) writeToFile(path string) {
 		analyser.testGameState()
 		analyser.testParticipant()
 	}
-	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s", analyzerVersion, mapname))
+	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s, round_played=%d", analyzerVersion, mapname, roundPlayed))
 	w.WriteByte('\n')
 	w.Flush()
 	w.WriteString(features)
@@ -145,93 +181,18 @@ func (analyser *Analyser) writeToFile(path string) {
 			}).Info("Player has wrong stat ")
 			continue
 		}
-		// teamState := gs.Team(currPlayer.Team)
-		roundPlayed := float32(analyser.roundPlayed)
-		playerName := currPlayer.Name
-		if replaceWithSpace {
-			playerName = strings.Replace(playerName, specifier, " ", -1)
-		}
-		sb.WriteString(fmt.Sprintf("%s%s", playerName, specifier))
 
-		var pistolRoundWonPercentage float32
-		pistolROundsWon := float32(currPlayer.GetPistolRoundWon())
-		pistolROundsLost := float32(currPlayer.GetPistolRoundLost())
-		if (pistolROundsWon + pistolROundsLost) > 0 {
-			pistolRoundWonPercentage = pistolROundsWon / (pistolROundsWon + pistolROundsLost)
-		}
-		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", pistolRoundWonPercentage), specifier))
-
-		var hsPercentage float32
-		hsKills := float32(currPlayer.GetNumHSKills())
-		totalKIlls := float32(currPlayer.GetNumKills())
-		if totalKIlls > 0 {
-			hsPercentage = hsKills / totalKIlls
-		}
-		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", hsPercentage), specifier))
-
-		// clutchesWon := fmt.Sprintf("%.3f", int(currPlayer.GetClutchWon())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprint(currPlayer.GetClutchWon()), specifier))
-
-		adr := fmt.Sprintf("%.3f", float32(currPlayer.GetTotalDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", adr, specifier))
-
-		fpr := fmt.Sprintf("%.3f", float32(currPlayer.GetNumKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", fpr, specifier))
-
-		apr := fmt.Sprintf("%.3f", float32(currPlayer.GetNumAssists())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", apr, specifier))
-
-		kdDiff := fmt.Sprintf("%.3f", (float32(currPlayer.GetNumKills())-float32(currPlayer.GetNumDeaths()))/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", kdDiff, specifier))
-
-		flashAssist := fmt.Sprintf("%.3f", float32(currPlayer.GetFlashAssist())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", flashAssist, specifier))
-
-		blindPlayerKilled := fmt.Sprintf("%.3f", float32(currPlayer.GetPlayerBlindedKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", blindPlayerKilled, specifier))
-
-		blindKills := fmt.Sprintf("%.3f", float32(currPlayer.GetBlindKills())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", blindKills, specifier))
-
-		granedaDamage := fmt.Sprintf("%.3f", float32(currPlayer.GetGranadeDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", granedaDamage, specifier))
-
-		fireDamage := fmt.Sprintf("%.3f", float32(currPlayer.GetFireDamage())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", fireDamage, specifier))
-
-		timeFlashingOpponent := fmt.Sprintf("%.3f", float32(currPlayer.GetTimeFlashing().Seconds())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", timeFlashingOpponent, specifier))
-
-		var accuracy float32
-		shotsHit := float32(currPlayer.GetShotsHit())
-		totalShot := float32(currPlayer.GetShots())
-		if totalShot > 0 {
-			accuracy = shotsHit / totalShot
-		}
-		accuracyStr := fmt.Sprintf("%.3f", accuracy)
-		sb.WriteString(fmt.Sprintf("%s%s", accuracyStr, specifier))
-
-		numTrader := fmt.Sprintf("%.3f", float32(currPlayer.GetNumTrader())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", numTrader, specifier))
-
-		numTradee := fmt.Sprintf("%.3f", float32(currPlayer.GetNumTradee())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", numTradee, specifier))
-
-		kast := fmt.Sprintf("%.3f", float32(currPlayer.GetKAST())/roundPlayed)
-		sb.WriteString(fmt.Sprintf("%s%s", kast, specifier))
 		winLabel := 0
 		// if there is equality or player team won set to 1
 		if teamWon == common.TeamUnassigned || currPlayer.Team == teamWon {
 			winLabel = 1
 		}
-		sb.WriteString(fmt.Sprintf("%s", fmt.Sprint(winLabel)))
-		w.WriteString(sb.String())
-		w.WriteByte('\n')
-		w.Flush()
-		sb.Reset()
+		sb = currPlayer.OutputPlayerState(sb, analyser.roundPlayed, winLabel)
 
 	}
 
-	// os.Exit(0)
+	w.WriteString(sb.String())
+	w.Flush()
+	sb.Reset()
 
 }
