@@ -19,6 +19,7 @@ import (
 var numConcurrentWorker int
 var demofilePath string
 var logPrefix string
+var logLevel string
 var outputPrefix string
 var isMethodName bool
 var stdout bool
@@ -31,6 +32,7 @@ func init() {
 	demofilePath = viper.GetString("test.demofile_path")
 	numConcurrentWorker = viper.GetInt("test.concurrent_worker")
 	logPrefix = viper.GetString("test.log_prefix")
+	logLevel = viper.GetString("test.log_level")
 	outputPrefix = viper.GetString("test.output_prefix")
 	isMethodName = viper.GetBool("log.is_method_name")
 	stdout = viper.GetBool("log.stdout")
@@ -38,7 +40,9 @@ func init() {
 	viper.Set("checkanalyzer", true)
 
 	// init test logger
-	log = utils.InitLogger("test_log.txt", isMethodName, true)
+	log = utils.InitLogger("test_log.txt", logLevel, isMethodName, true)
+
+	log.Info("Logger has been initilized")
 
 }
 

@@ -9,29 +9,42 @@ dob = 2019-01-09T15:55:00-08:00
 [log]
 # whether log method name
 is_method_name = false
+# log level
+log_level = "info"
 
 [output]
-features = "Name,Pistol_Rounds_Won_Percentage,HS_Percentage,Clutches_Won,ADR,FPR,FKR,APR,K_D_Diff_Round,Flash_Assists_Round,Blind_Players_Killed_Round,Blind_Kills,Grenade_Damage_Round,Fire_Damage_Round,Time_Flashing_Opponents_Round,Accuracy,Num_Times_Trader,Num_Times_Tradee,KAST,MVP,Won"
-analyzer_version = "0.2.4"
+features = '''Name,Pistol_Rounds_Won_Percentage,HS_Percentage,Clutches_Won,ADR,FPR,FKR,APR,K_D_Diff_Round,Flash_Assists_Round,Blind_Players_Killed_Round,Blind_Kills,Grenade_Damage_Round,Fire_Damage_Round,Time_Flashing_Opponents_Round,Accuracy,Num_Times_Trader,Num_Times_Tradee,KAST,MVP,Money_Saved_Round,Sniper_Kill_Round,Melee_Kill_Round,Shotgun_Kill_Round,AssultR_Kill_Round,Pistol_Kill_Round,MachineGun_Kill_Round,SMG_Kill_Round,Head_Hit,Stomach_Hit,Chest_Hit,Legs_Hit,Arms_Hit,Unit_Damage_Cost,Av_Kill_Distance,Player_Saved_Round,Player_Won_Health_Round,Player_Lost_Health_Round,Last_Member_Survived_Round,Time_Hurt_To_Kill,Spray_Sniper,Spray_Shotgun,Spray_ARifle,Spray_Pistol,Spray_Machinegun,Spray_SMG,Round_Win_Percentage,Round_Wintime,Duck_Kill,Member_Death_Distance_Round,Sniper_Killed,Occupied_Area_Round,Won'''
+analyzer_version = "0.3.0"
 round_print = true
 mapnameAlias = { cobblestone = "cbble" }
 
 [test]
 demofile_path = "/home/baran/Desktop/demo_files/working_demos"
 log_prefix = "log"
+log_level = "info"
 output_prefix = "stat"
 concurrent_worker = 1
 stdout = false
 
-# variables related to analyser
+# variables related to algorithms in the analyzer events
 [algorithm]
 # default money for round start
 roundStartMoney = 800
+# ******* first kill event *****
 # num. of seconds after a firt kill killer have to be alive to count as first kill
 after_first_kill = 2
+# ******* saviour event ********
 # minimum seconds of killing an attacker will count as saving
 before_save_seconds = 3
 # max health of hurted player count as saved
 max_health_saved = 30
+# ******* crosshair replecament event ***
 # seconds to check croshair replecament just before a kill
 before_crashair = 0.3
+# ***** map control *******
+# how many meter a player near to center of a place to assign the control of the place
+distance_from_center = 200
+# period of checking map occupancy in seconds
+period_check_occupancy = 1
+# how many seconds we will check the occupancy of the map before a round is finished
+remaning_sec_check = 10

@@ -13,7 +13,10 @@ import (
 // handleRoundEnd handle end of the round
 // mainly called by score update or round end event
 func (analyser *Analyser) handleRoundEnd(e interface{}) {
-	tick := analyser.getGameTick()
+	tick, err := analyser.getGameTick()
+	if err { //negative tick
+		return
+	}
 
 	// check match has already started and not yet finished
 	if analyser.isFirstParse && !analyser.checkMatchValidity() {
@@ -161,7 +164,7 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		// should not be considered as round end
 		if analyser.roundEnd == tick && (analyser.roundPlayed > analyser.lastRoundEndCalled) {
 
-			analyser.handleSpecialRound(winnerTS.Team(), loserTS.Team())
+			analyser.handleSpecialRound(winnerTS.Team(), loserTS.Team(), tick)
 
 			// set winner team to use in round official end
 			analyser.winnerTeam = winnerTS.Team()
@@ -196,8 +199,8 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 				if analyser.winnerTeam == p_common.TeamTerrorists || analyser.winnerTeam == p_common.TeamCounterTerrorists {
 					analyser.handleClutchSituation(analyser.winnerTeam, tick)
 				}
-				analyser.handleKAST()
-				analyser.checkMatchContinuity()
+				analyser.handleKAST(tick)
+				analyser.checkMatchContinuity(tick)
 			}
 
 			// record winner of the round
@@ -206,6 +209,8 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 			// reset round end for duplicate calls in same tick
 			analyser.roundEnd = 0
 
+			// set we are not in round right know
+			analyser.inRound = false
 		}
 
 	} else { //first parsing
@@ -273,17 +278,21 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 		}
 
 		// check match is over
-		analyser.checkMatchContinuity()
+		analyser.checkMatchContinuity(tick)
 	}
 
 }
 
 // handleMatchStart handle match start event
 func (analyser *Analyser) handleMatchStart(eventName string) {
-	tick := analyser.getGameTick()
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 
 	// we already called match start for this tick
-	// at the first match start itcan start at tick 0
+	// at the first match start it can start at tick 0
 	if analyser.lastMatchStartedCalled == tick && analyser.lastMatchStartedCalled != 0 {
 		return
 	}
@@ -292,9 +301,9 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 	var ok bool
 
 	// check participant validity
-	if teamT, teamCT, ok = analyser.checkParticipantValidity(); !ok {
+	if teamT, teamCT, ok = analyser.checkParticipantValidity(tick); !ok {
 		analyser.log.WithFields(logging.Fields{
-			"tick":       analyser.getGameTick(),
+			"tick":       tick,
 			"event name": eventName,
 			"ct number":  len(teamCT),
 			"t number":   len(teamT),
@@ -313,12 +322,12 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 
 		if !analyser.matchStarted {
 			analyser.log.WithFields(logging.Fields{
-				"tick":       analyser.getGameTick(),
+				"tick":       tick,
 				"event name": eventName,
 			}).Info("A new match has been started")
 
 			// reset match based variables
-			analyser.resetMatchVars()
+			analyser.resetMatchVars(tick)
 
 		} else {
 			if !analyser.checkMoneyValidity() {
@@ -332,7 +341,7 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 			}
 
 			analyser.log.WithFields(logging.Fields{
-				"tick":       analyser.getGameTick(),
+				"tick":       tick,
 				"event name": eventName,
 			}).Info("Match has already started.Count as round start if possible.")
 		}
@@ -346,9 +355,13 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 		}
 
 		// After set score and round number using setRoundStart, we do not want
-		// to reset score and round number so that we are not calling rset match vars
+		// to reset score and round number so that we are not calling reset match vars
 		// because match start has been counting as round start on second parsing
-		analyser.resetRoundVars(teamT, teamCT, tick)
+
+		// reset round based variables if we are not in a round
+		if analyser.inRound == false {
+			analyser.resetRoundVars(teamT, teamCT, tick)
+		}
 
 		analyser.log.WithFields(logging.Fields{
 			"tick": tick,
@@ -361,10 +374,14 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 
 // handlePlayerConnect handle player connection event
 func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 	NewPlayer := e.Player
 	uid := NewPlayer.SteamID
 	var NewPPlayer *common.PPlayer
-	tick := analyser.getGameTick()
 
 	// if non player is connecting, ignore it
 	if !analyser.checkPlayerTeamValidity(NewPlayer) {
@@ -429,10 +446,14 @@ func (analyser *Analyser) handlePlayerConnect(e events.PlayerConnect) {
 
 // handlePlayerDisconnect handle player disconnection event
 func (analyser *Analyser) handlePlayerDisconnect(e events.PlayerDisconnected) {
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 	currentPlayer := e.Player
 	playerSide := currentPlayer.Team
 	currentPLayerID := currentPlayer.SteamID
-	tick := analyser.getGameTick()
 
 	if currentPPlayer, ok := analyser.getPlayerByID(currentPLayerID, false); ok {
 		analyser.log.WithFields(logging.Fields{
@@ -465,12 +486,17 @@ func (analyser *Analyser) handlePlayerDisconnect(e events.PlayerDisconnected) {
 // handleTeamChange handle player team change
 // for now, it is mainly use for update player pointer of reconnected player
 func (analyser *Analyser) handleTeamChange(e events.PlayerTeamChange) {
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
+
 	changedPlayer := e.Player
 	oldTeam := e.OldTeam
 	oldTeamState := e.OldTeamState
 	newTeam := e.NewTeam
 	// uid := changedPlayer.SteamID
-	tick := analyser.getGameTick()
 
 	if (oldTeam == p_common.TeamSpectators || oldTeam == p_common.TeamUnassigned) &&
 		(newTeam == p_common.TeamTerrorists || newTeam == p_common.TeamCounterTerrorists) {
@@ -527,14 +553,17 @@ func (analyser *Analyser) handleTeamChange(e events.PlayerTeamChange) {
 
 // handleRoundStart handle round start event
 func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
-	// defer utils.RecoverPanic()
-	tick := analyser.getGameTick()
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 
 	// check teams
 	var teamT, teamCT []*p_common.Player
 	// var teamOk bool
 
-	teamT, teamCT, _ = analyser.checkParticipantValidity()
+	teamT, teamCT, _ = analyser.checkParticipantValidity(tick)
 
 	// teamT, teamCT, teamOk = analyser.checkParticipantValidity()
 	// if analyser.isFirstParse && !teamOk {
@@ -548,7 +577,7 @@ func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
 
 	if analyser.isFirstParse {
 		// check match is over
-		analyser.checkMatchContinuity()
+		analyser.checkMatchContinuity(tick)
 
 		// check money validity
 		if !analyser.checkMoneyValidity() {
@@ -593,17 +622,25 @@ func (analyser *Analyser) handleRoundStart(e events.RoundStart) {
 		analyser.log.WithFields(logging.Fields{
 			"tick":         tick,
 			"round number": analyser.roundPlayed,
+			"round start":  analyser.roundStart,
+			"round end":    analyser.roundEnd,
 		}).Info("A new round has been started")
 	}
 
-	// reset round based variables
-	analyser.resetRoundVars(teamT, teamCT, tick)
+	// reset round based variables if we are not in a round
+	if analyser.inRound == false {
+		analyser.resetRoundVars(teamT, teamCT, tick)
+	}
 
 }
 
 // handleRoundOfficiallyEnd handle round officially end event
 func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
-	tick := analyser.getGameTick()
+	// negative tick check
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 
 	// second parsing
 	if !analyser.isFirstParse {
@@ -623,15 +660,18 @@ func (analyser *Analyser) handleRoundOfficiallyEnd(e events.RoundEndOfficial) {
 		}).Info("Round has officially ended.")
 
 		analyser.notifyRoundEnd(analyser.roundPlayed, analyser.winnerTeam, roundDurationSecond)
-		analyser.handleKAST()
+		analyser.handleKAST(tick)
 		// if there is a winner handle clutch as well
 		if analyser.winnerTeam == p_common.TeamTerrorists || analyser.winnerTeam == p_common.TeamCounterTerrorists {
 			analyser.handleClutchSituation(analyser.winnerTeam, tick)
 		}
-		analyser.checkMatchContinuity()
+		analyser.checkMatchContinuity(tick)
 
 		// reset roundoffend for duplicate calls
 		analyser.roundOffEnd = 0
+
+		// set we are not in a round right know
+		analyser.inRound = false
 
 	} else {
 		// check match has already started and not yet finished

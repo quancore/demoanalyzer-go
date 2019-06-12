@@ -39,7 +39,9 @@ func (analyser *Analyser) resetAnalyserVars() {
 	analyser.NumOvertime = 6
 	analyser.minPlayedRound = 5
 	analyser.roundPlayed = 0
+	analyser.inRound = false
 	analyser.isSuccesfulAnalyzed = false
+	analyser.lastCheckedTick = 0
 }
 
 // initilizeRoundMaps initilize map vars related a round with empty maps
@@ -54,6 +56,11 @@ func (analyser *Analyser) initilizeRoundMaps(teamT, teamCT []*p_common.Player, t
 
 // resetRoundVars reset round based variables
 func (analyser *Analyser) resetRoundVars(teamT, teamCT []*p_common.Player, tick int) {
+	// if we are not already in a round
+	analyser.log.WithFields(logging.Fields{
+		"tick":         tick,
+		"round played": analyser.roundPlayed,
+	}).Info("Resetting round vars")
 	analyser.initilizeRoundMaps(teamT, teamCT, tick)
 	analyser.isBombPlanted = false
 	analyser.isBombDefusing = false
@@ -77,18 +84,31 @@ func (analyser *Analyser) resetRoundVars(teamT, teamCT []*p_common.Player, tick 
 	analyser.isWeaponFired = false
 	analyser.winnerTeam = p_common.TeamUnassigned
 
+	// for second parse, register map occupancy event for each round
+	if !analyser.isFirstParse {
+		if analyser.navigator != nil {
+			analyser.navigator.ResetNavigator()
+
+			// calculate end of the periodic event
+			eventEndTick := analyser.roundEnd - analyser.remaningTickCheck
+			mapControlEvent := mapControl{eventCommon: eventCommon{analyser: analyser,
+				offsetSec: analyser.periodOcccupancyCheck, isPeriodic: true, endTick: eventEndTick}}
+			analyser.customScheduler.addEvent(tick, analyser.periodOcccupancyCheck, mapControlEvent)
+		}
+	}
+
 }
 
 // resetRoundVars reset match based variables
-func (analyser *Analyser) resetMatchVars() {
+func (analyser *Analyser) resetMatchVars(tick int) {
 	// first check whether the match has been played for certain number of rounds
 	if !analyser.checkIsMatchValid() {
-		analyser.resetScore()
+		analyser.resetScore(tick)
 		analyser.resetPlayerStates()
-		analyser.resetMatchFlags()
+		analyser.resetMatchFlags(tick)
 	} else {
 		analyser.log.WithFields(logging.Fields{
-			"tick":         analyser.getGameTick(),
+			"tick":         tick,
 			"round played": analyser.roundPlayed,
 		}).Info("Certain number of match played for this match so it will not be reset")
 	}
@@ -96,17 +116,17 @@ func (analyser *Analyser) resetMatchVars() {
 }
 
 // resetScore reset match score and round played
-func (analyser *Analyser) resetScore() {
+func (analyser *Analyser) resetScore(tick int) {
 	analyser.roundPlayed = 0
 	analyser.ctScore = 0
 	analyser.tScore = 0
 	analyser.log.WithFields(logging.Fields{
-		"tick": analyser.getGameTick(),
+		"tick": tick,
 	}).Info("Score has been reset")
 }
 
 // resetMatchFlags reset match flags
-func (analyser *Analyser) resetMatchFlags() {
+func (analyser *Analyser) resetMatchFlags(tick int) {
 	analyser.matchStarted = true
 	analyser.matchEnded = false
 	analyser.scoreSwapped = false
@@ -115,7 +135,7 @@ func (analyser *Analyser) resetMatchFlags() {
 	analyser.lastRoundEndCalled = 0
 
 	analyser.log.WithFields(logging.Fields{
-		"tick":         analyser.getGameTick(),
+		"tick":         tick,
 		"round played": analyser.roundPlayed,
 	}).Info("Match flags has been reset")
 }
@@ -139,6 +159,23 @@ func (analyser *Analyser) notifyRoundEnd(numRoundPlayed int, winnerTeam p_common
 func (analyser *Analyser) notifyAllMatchEnd(tScore, ctScore int) {
 	for _, pplayer := range analyser.players {
 		pplayer.NotifyMatchEnd(tScore, ctScore)
+	}
+}
+
+// notifySquareMeter notify all players occupied square meter in map for this round
+func (analyser *Analyser) notifySquareMeter(tArea, ctArea float32, tick int) {
+	analyser.log.WithFields(logging.Fields{
+		"tick":            tick,
+		"round":           analyser.roundPlayed,
+		"t square meter":  tArea,
+		"ct square meter": ctArea,
+	}).Info("Square meter occupied for the round")
+	for _, pplayer := range analyser.players {
+		if pplayer.Team == p_common.TeamTerrorists {
+			pplayer.NotifyOccupiedArea(tArea)
+		} else if pplayer.Team == p_common.TeamCounterTerrorists {
+			pplayer.NotifyOccupiedArea(ctArea)
+		}
 	}
 }
 
@@ -307,13 +344,8 @@ func (analyser *Analyser) swapScore(newTscore, newCTscore int) {
 
 // setRoundStart set correct round number and start, end tick for second time parsing
 func (analyser *Analyser) setRoundStart(tick int) bool {
-	curValidEnd := analyser.roundEnd
-	if analyser.roundOffEnd > 0 {
-		curValidEnd = analyser.roundOffEnd
-	}
-
 	// current round is ongoing, the event is already valid
-	if analyser.roundStart <= tick && curValidEnd >= tick {
+	if analyser.checkRoundEventValid(tick) {
 		return true
 	}
 
@@ -331,6 +363,10 @@ func (analyser *Analyser) setRoundStart(tick int) bool {
 			analyser.roundOffEnd = currRound.OfficialEndTick
 			analyser.curValidRound = currRound
 			analyser.roundPlayed = roundNumber
+			// register scheduled event handler
+			if roundNumber == 1 {
+				analyser.registerScheduler()
+			}
 			analyser.log.WithFields(logging.Fields{
 				"tick":         tick,
 				"round number": roundNumber,
@@ -346,12 +382,11 @@ func (analyser *Analyser) setRoundStart(tick int) bool {
 }
 
 // setRoundType find the type of round
-func (analyser *Analyser) setRoundType() {
+func (analyser *Analyser) setRoundType(tick int) {
 	var startTEquipment, startCTEquipment, spentTMoney, spentCTMoney int
 	// var currentTEquipment, currentCTequipment, totalTMoney, totalCTmoney, startT, startCT int
 	var tRoundType, ctRoundType string
 	// var RoundType string
-	tick := analyser.getGameTick()
 	gs := analyser.parser.GameState()
 
 	// get teams

@@ -65,6 +65,8 @@ type Analyser struct {
 	// round number last round end called
 	// used for double call on score update and round end for handling kast and clutches
 	lastRoundEndCalled int
+	// The tick number lastly checked on TickDone
+	lastCheckedTick int
 	// *************************
 
 	// **********round related variables*******
@@ -136,6 +138,8 @@ type Analyser struct {
 	mapName string
 	// metadata of Header
 	mapMetadata *metadata.Map
+	// total map area
+	mapArea float32
 	// tickrate of demo file
 	tickRate float64
 	// main parser to parse demofile
@@ -151,6 +155,8 @@ type Analyser struct {
 	buf *bytes.Buffer
 	// config of parser
 	cfg dem.ParserConfig
+	// navigator Object
+	navigator *common.Navigator
 	// ************************************
 
 	// ******* parsing related vars *******
@@ -180,8 +186,10 @@ type Analyser struct {
 	customScheduler *Scheduler
 	// ***********************************************
 	// ******** Alg. related const *******************
-	afterFirstKill  float64
-	beforeCrosshair float64
+	afterFirstKill        float64
+	beforeCrosshair       float64
+	periodOcccupancyCheck float64
+	remaningTickCheck     int
 	// ***********************************************
 }
 
@@ -206,7 +214,8 @@ func NewAnalyser(demostream io.Reader, logPath, outPath string, ismethodname, mu
 	analyser.buf = &buf
 	analyser.cfg = cfg
 	analyser.outPath = outPath
-	analyser.log = utils.InitLogger(logPath, ismethodname, multiplewriter)
+	logLevel := viper.GetString("log.log_level")
+	analyser.log = utils.InitLogger(logPath, logLevel, ismethodname, multiplewriter)
 
 	analyser.log.Info("Analyser has been created")
 
@@ -240,6 +249,12 @@ func (analyser *Analyser) handleHeader() {
 		"map name":    header.MapName,
 		"tick rate":   header.TickRate(),
 	}).Info("Several fields of header: ")
+
+	// set checkpoint of area contolled by teams on each round
+	remaningSeckCheck := viper.GetInt("algorithm.remaning_sec_check")
+	remaningTickCheck := common.SecondsToTick(float64(remaningSeckCheck), analyser.tickRate)
+	analyser.remaningTickCheck = int(remaningTickCheck)
+
 }
 
 // Analyze parse demofile
@@ -247,7 +262,7 @@ func (analyser *Analyser) Analyze() {
 	// first handle parser header
 	analyser.handleHeader()
 	// create scheduler for custom events
-	analyser.customScheduler = NewScheduler(analyser.tickRate)
+	analyser.customScheduler = NewScheduler(analyser, analyser.tickRate)
 	analyser.log.Info("Analyzing first time")
 	analyser.isFirstParse = true
 	analyser.registerNetMessageHandlers()
@@ -260,26 +275,48 @@ func (analyser *Analyser) Analyze() {
 
 	analyser.log.Info("Analyzing second time")
 	analyser.isFirstParse = false
+	// get map metadata for plotting
 	if mapMetadata, ok := metadata.MapNameToMap[analyser.mapName]; ok {
 		analyser.log.WithFields(logging.Fields{
 			"map name": analyser.mapName,
 		}).Info("Map metadata has been initilized.")
 		analyser.mapMetadata = &mapMetadata
+	} else {
+		analyser.log.WithFields(logging.Fields{
+			"map name": analyser.mapName,
+		}).Error("Map metadata is not available.")
+	}
+
+	// create navigator object and parse map
+	analyser.navigator = common.NewNavigator(analyser.log)
+	err := analyser.navigator.Parse(analyser.mapName)
+	if err == nil {
+		analyser.log.WithFields(logging.Fields{
+			"map name": analyser.mapName,
+			"err":      err,
+		}).Info("Navigator object has been initilized.")
+		analyser.mapArea = analyser.navigator.GetTotalMapArea()
+	} else {
+		analyser.log.WithFields(logging.Fields{
+			"map name": analyser.mapName,
+		}).Error("Navigator object has not been initilized.")
+		analyser.navigator = nil
 	}
 
 	analyser.resetAnalyser()
 	analyser.registerMatchEventHandlers()
 	analyser.registerPlayerEventHandlers()
-	analyser.registerScheduler()
+	tick, _ := analyser.getGameTick()
+
 	// beacuse there is no event counting as match start on
 	// second parsing, we are calling reset match vars externally
 	// on the beginning of second parser
-	analyser.resetMatchVars()
+	analyser.resetMatchVars(tick)
 
 	// because net messages handler is not registered, we can use
 	// parsetoend, so that we are not protecting sync betwenn net messages
 	// and event dispatch
-	err := analyser.parser.ParseToEnd()
+	err = analyser.parser.ParseToEnd()
 
 	// sometimes demo files enden unexpectedly however, it is not important
 	// if we already finished the analyze
@@ -294,4 +331,5 @@ func (analyser *Analyser) Analyze() {
 func (analyser *Analyser) initAlgVars() {
 	analyser.afterFirstKill = viper.GetFloat64("algorithm.after_first_kill")
 	analyser.beforeCrosshair = viper.GetFloat64("algorithm.before_crashair")
+	analyser.periodOcccupancyCheck = viper.GetFloat64("algorithm.period_check_occupancy")
 }

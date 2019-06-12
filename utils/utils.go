@@ -59,7 +59,7 @@ func GetGoPath() string {
 // }
 
 // InitLogger setup logger for both printing file and console
-func InitLogger(path string, methodname bool, isstdout bool) *log.Logger {
+func InitLogger(path, logLevel string, methodname bool, isstdout bool) *log.Logger {
 	// remove old file if exist
 	os.Remove(path)
 
@@ -85,8 +85,17 @@ func InitLogger(path string, methodname bool, isstdout bool) *log.Logger {
 	logger.SetOutput(wrt)
 	// set whether we log filename as well
 	logger.SetReportCaller(methodname)
-	// log.SetLevel(log.ErrorLevel)
-	logger.Info("Logger has been initilized.")
+	// parse string, this is built-in feature of logrus
+	ll, err := log.ParseLevel(logLevel)
+	if err != nil {
+		ll = log.DebugLevel
+	}
+	// set global log level
+	logger.SetLevel(ll)
+	level := logger.GetLevel()
+	logger.WithFields(log.Fields{
+		"level": level,
+	}).Info("Logger has been initilized")
 
 	return logger
 }
@@ -151,4 +160,40 @@ func Abs(x int) int {
 		return -x
 	}
 	return x
+}
+
+// Absf32 find absolute value of an float32
+func Absf32(x float32) float32 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+// Maxf32 max for float32
+// Return false if max is first argument (x)
+func Maxf32(x, y float32) (float32, bool) {
+	if x < y {
+		return y, true
+	}
+	return x, false
+}
+
+// Minf32 min for float32
+// Return false if min is first argument (x)
+func Minf32(x, y float32) (float32, bool) {
+	if x > y {
+		return y, true
+	}
+	return x, false
+}
+
+// SafeDivision divide given numbers. If divider 0, return 0
+func SafeDivision(number, divider float32) float32 {
+	var result float32
+	if divider != 0 {
+		result = number / divider
+	}
+
+	return result
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/golang/geo/r3"
 	player "github.com/markus-wa/demoinfocs-golang/common"
 	event "github.com/markus-wa/demoinfocs-golang/events"
+	"github.com/quancore/demoanalyzer-go/utils"
 	log "github.com/sirupsen/logrus"
 	viper "github.com/spf13/viper"
 )
@@ -45,6 +46,8 @@ type PPlayer struct {
 	blindKills uint
 	// The struct keep lastly hurted opponent player
 	lastHurt map[int64]*HurtTuples
+	// The map keeps spotted opponent players by the player
+	spottedPlayers map[int64]*SpottedPlayer
 	// The steam id of the player that last flashed the current one
 	lastFlashedBy int64
 	// The tick value the flash event will be valid
@@ -55,10 +58,14 @@ type PPlayer struct {
 	lastKilledTick int
 	// The number of last ended round
 	lastEndedRound int
+	// The tick value of player last footstep. Used for whether player moved or not.
+	lastFootstepTick int
 	// The round variable that number of killed team members
 	numKilledMembers int
 	// The number of rounds played by this player
 	numRoundsPlayed uint
+	// Number of damage firstly given. Used as normalization on POV to damage
+	numFirstDamage int
 	// The number of shots hit
 	shotsHit uint
 	// The number of trades done
@@ -78,6 +85,8 @@ type PPlayer struct {
 	flashDuration time.Duration
 	// Total amount of time to kill a player after first damage
 	timeHurtToKill time.Duration
+	// Total amount of time first appear on POV and hit the enemy
+	timePOVtoDamage time.Duration
 	// Total round time
 	totalRoundWinTime time.Duration
 	// The number of headshots done
@@ -88,6 +97,8 @@ type PPlayer struct {
 	kill uint
 	// The number of kills while ducking
 	duckKill int
+	// The number of kills the player did while victim POV not including the player
+	lurkerKill int
 	// The total distance to enemy killed by this player
 	totalKillDistance float32
 	// The cost of unit damage
@@ -130,6 +141,8 @@ type PPlayer struct {
 	totalHealthLost int
 	// The number of rounds alive as last member survived
 	lastMemberSurvived int
+	// The map area occupied by the team
+	teamOccupiedArea float32
 
 	// Total spent money to weapon dropped and picked up by other member of team
 	droppedItemVal int
@@ -184,11 +197,27 @@ func NewPPlayer(player *player.Player, logger *log.Logger) *PPlayer {
 	}
 	// map initilization
 	pplayer.lastHurt = make(map[int64]*HurtTuples)
+	pplayer.spottedPlayers = make(map[int64]*SpottedPlayer)
 
 	return pplayer
 }
 
 // *** Getters **********
+
+// getSpottedPlayer get spotted player by id if exist
+func (p *PPlayer) getSpottedPlayer(playerID int64) *SpottedPlayer {
+	// for _, spottedplayer := range p.spottedPlayers {
+	// 	p.logger.WithFields(log.Fields{
+	// 		"id":          playerID,
+	// 		"player name": spottedplayer.Player.Name,
+	// 	}).Debug("getting spotted player")
+	// }
+
+	if spottedplayer, ok := p.spottedPlayers[playerID]; ok {
+		return spottedplayer
+	}
+	return nil
+}
 
 // GetOldTeam get old team
 func (p *PPlayer) GetOldTeam() player.Team { return p.oldTeam }
@@ -224,7 +253,7 @@ func (p *PPlayer) GetSavedNum() int { return p.savedFriends }
 // GetMeleeKills get number of kill by melee
 func (p *PPlayer) GetMeleeKills() int { return p.numKillMelee }
 
-// GetPistolKills get number of kill by pistol
+// GetPistolKills get number of kill by pisdamageCosttol
 func (p *PPlayer) GetPistolKills() int { return p.numKillPistol }
 
 // GetShotgunKills get number of kill by shotgun
@@ -365,6 +394,9 @@ func (p *PPlayer) GetShots() uint { return p.shots }
 // GetShotsHit get shots hit have done
 func (p *PPlayer) GetShotsHit() uint { return p.shotsHit }
 
+// GetNumFirstDamage get the number of first damage given
+func (p *PPlayer) GetNumFirstDamage() int { return p.numFirstDamage }
+
 // GetKAST get kast have done
 func (p *PPlayer) GetKAST() uint { return p.kast }
 
@@ -427,6 +459,15 @@ func (p *PPlayer) GetTotalRoundWinTime() time.Duration { return p.totalRoundWinT
 // GetDuckKill get duck kill count
 func (p *PPlayer) GetDuckKill() int { return p.duckKill }
 
+// GetLurkerKill get lurker kill count
+func (p *PPlayer) GetLurkerKill() int { return p.lurkerKill }
+
+// GetlastFootstepTick get last footstep tick
+func (p *PPlayer) GetlastFootstepTick() int { return p.lastFootstepTick }
+
+// GetTeamOccupiedArea get the square meter area occupied by the team
+func (p *PPlayer) GetTeamOccupiedArea() float32 { return p.teamOccupiedArea }
+
 // ****** setters ********
 
 // SetOldTeam set old team
@@ -458,8 +499,9 @@ func (p *PPlayer) SetSavedMoney(savedMoney int) {
 
 // SetKillDistance add distance to enemy newly killed to tat distance
 func (p *PPlayer) SetKillDistance(victimLastAlivePos r3.Vector) {
-	lastposX, lastPosY := victimLastAlivePos.X, victimLastAlivePos.Y
-	distance := FindEuclidianDistance(lastposX, lastPosY, p.Position.X, p.Position.Y)
+	distance := victimLastAlivePos.Distance(p.Position)
+	// lastposX, lastPosY := victimLastAlivePos.X, victimLastAlivePos.Y
+	// distance := FindEuclidianDistance(lastposX, lastPosY, p.Position.X, p.Position.Y)
 	p.totalKillDistance += float32(distance)
 }
 
@@ -480,11 +522,44 @@ func (p *PPlayer) setTotalHealthLost(remHealth int) {
 
 // ***************event notification *******************
 
+// NotifyOccupiedArea notify occupied area of the team
+func (p *PPlayer) NotifyOccupiedArea(area float32) { p.teamOccupiedArea += area }
+
+// NotifyPlayerFootstep handle player footstep
+func (p *PPlayer) NotifyPlayerFootstep(tick int) { p.lastFootstepTick = tick }
+
 // NotifyDroppedItem notify a item value dropped by this player and picked up by a team member
 func (p *PPlayer) NotifyDroppedItem(value int) { p.droppedItemVal += value }
 
 // NotifyPickedItem notify a item value picked up
 func (p *PPlayer) NotifyPickedItem(value int) { p.pickedItemVal += value }
+
+// notifyPOVtoDamage calculate amount of time to victim between first seen in POV and damge given
+func (p *PPlayer) notifyPOVtoDamage(victimID int64, tick int, tickrate float64) {
+
+	spottedVictim := p.getSpottedPlayer(victimID)
+	if spottedVictim != nil {
+		spottedTick := spottedVictim.Tick
+		tickDifference := tick - spottedTick
+		secondsDifference := TickToSeconds(tickDifference, tickrate)
+		// if the time is not an outlier
+		if secondsDifference.Seconds() < 3 {
+			p.timePOVtoDamage += secondsDifference
+			p.numFirstDamage++
+			p.logger.WithFields(log.Fields{
+				"tick":                 tick,
+				"spotted tick":         spottedTick,
+				"attacker":             p.Name,
+				"spotted victim":       spottedVictim.Player.Name,
+				"POVtoDamage duration": secondsDifference.Seconds(),
+				"number first damage":  p.numFirstDamage,
+			}).Info("Pov to damage event")
+		}
+
+		// after recording duration, remove POV record
+		delete(p.spottedPlayers, victimID)
+	}
+}
 
 // notifySniperKilled notify sniper elimination
 func (p *PPlayer) notifySniperKilled(victim *PPlayer, tick int) {
@@ -497,7 +572,7 @@ func (p *PPlayer) notifySniperKilled(victim *PPlayer, tick int) {
 				"victim":     victim.Name,
 				"zoom level": activeWeapon.ZoomLevel,
 				"weapon":     activeWeapon.Weapon.String(),
-			}).Info("A focused sniper has been killed")
+			}).Debug("A focused sniper has been killed")
 			p.sniperKilled++
 		}
 	}
@@ -572,6 +647,20 @@ func (p *PPlayer) NotifyKill(IsHeadshot bool, victim *PPlayer, weapon *player.Eq
 	if p.IsDucking {
 		p.notifyDuckKill()
 	}
+
+	if killerSpottedBy := p.IsSpottedBy(victim.Player); !killerSpottedBy {
+		p.logger.WithFields(log.Fields{
+			"killer": p.Name,
+			"victim": victim.Name,
+		}).Info("Lurker kill has been made")
+		p.notifyLurkerKill()
+	}
+
+	// delete victim from spotted player map of killer
+	// if _, ok := p.spottedPlayers[victim.SteamID]; ok {
+	// 	delete(p.spottedPlayers, victim.SteamID)
+	// }
+
 	p.notifySniperKilled(victim, tick)
 
 }
@@ -591,23 +680,27 @@ func (p *PPlayer) notifyTeamMemberSave(victim *PPlayer, tick int, tickrate float
 				"saved name":      hurtTuples.playerName,
 				"killed attacker": victim.Name,
 				"savior":          p.Name,
-			}).Info("Player has been saved from kill")
+			}).Debug("Player has been saved from kill")
 		}
 	}
 
-	victim.lastHurt = nil
+	// victim.lastHurt = nil
 }
 
 // NotifyTeamMemberDistance handle the distance to recently killed team member
 func (p *PPlayer) NotifyTeamMemberDistance(deathPosition r3.Vector) {
-	deathposX, deathPosY := deathPosition.X, deathPosition.Y
-	distance := FindEuclidianDistance(deathposX, deathPosY, p.Position.X, p.Position.Y)
+	// deathposX, deathPosY := deathPosition.X, deathPosition.Y
+	// distance := FindEuclidianDistance(deathposX, deathPosY, p.Position.X, p.Position.Y)
+	distance := deathPosition.Distance(p.Position)
 	p.numKilledMembers++
 	p.roundMemberKilledDistance += float32(distance)
 }
 
 // notifyDuckKill handle kill event while player is ducking
 func (p *PPlayer) notifyDuckKill() { p.duckKill++ }
+
+// notifyDuckKill handle kill event for lurker kill
+func (p *PPlayer) notifyLurkerKill() { p.lurkerKill++ }
 
 // NotifyLastMemberSurvived handle event of last member survived
 func (p *PPlayer) NotifyLastMemberSurvived() { p.lastMemberSurvived++ }
@@ -637,7 +730,7 @@ func (p *PPlayer) NotifyDamageTaken(HealthDamage int) {
 }
 
 // NotifyDamageGiven handle event of damage given
-func (p *PPlayer) NotifyDamageGiven(e event.PlayerHurt, eqRatio float32, tick int) {
+func (p *PPlayer) NotifyDamageGiven(e event.PlayerHurt, eqRatio float32, tick int, tickrate float64) {
 	HealthDamage := e.HealthDamage
 	victimID := e.Player.SteamID
 	// can be add different type of damage
@@ -648,6 +741,8 @@ func (p *PPlayer) NotifyDamageGiven(e event.PlayerHurt, eqRatio float32, tick in
 		p.shotsHit++
 		// notify hot group damage
 		p.notifyHitGroup(e.HitGroup)
+		// notify time between POV to damage given
+		p.notifyPOVtoDamage(victimID, tick, tickrate)
 		// add total damage cost
 		p.damageCost += (float32(HealthDamage) * eqRatio)
 		// add victim to attacker lasthurt pointer
@@ -728,6 +823,7 @@ func (p *PPlayer) NotifyRoundStart() {
 	p.lastFlashedBy = 0
 	p.lastValidTick = 0
 	p.lastHurt = make(map[int64]*HurtTuples)
+	p.spottedPlayers = make(map[int64]*SpottedPlayer)
 	p.lastWfTick = 0
 	p.roundStartMoney = p.GetMoney()
 	p.numKilledMembers = 0
@@ -779,6 +875,28 @@ func (p *PPlayer) NotifyGranadeDamage(Damage uint) { p.heDmg += Damage }
 // NotifyFireDamage handle event of updating fire damage given
 func (p *PPlayer) NotifyFireDamage(Damage uint) { p.fireDmg += Damage }
 
+// NotifyPlayerSpotted notify a player has been spotted by the player
+func (p *PPlayer) NotifyPlayerSpotted(player *PPlayer, tick int) {
+	isAlive := player.IsAlive()
+	p.logger.WithFields(log.Fields{
+		"spotter":               p.Name,
+		"tick":                  tick,
+		"spotted player":        player.Name,
+		"spotted payer isalive": isAlive,
+	}).Info("Player spotted by a player")
+	if isAlive {
+		playerID := player.GetSteamID()
+		spottedplayer := p.getSpottedPlayer(playerID)
+		if spottedplayer != nil {
+			spottedplayer.Tick = tick
+		} else {
+			newSpottedPlayer := SpottedPlayer{Tick: tick, Player: player}
+			p.spottedPlayers[playerID] = &newSpottedPlayer
+		}
+	}
+
+}
+
 // NotifyBlindDuration handle event of updating blind duration
 func (p *PPlayer) NotifyBlindDuration(Duration time.Duration) {
 	p.timeFlashingOpponents += Duration
@@ -797,7 +915,7 @@ func (p *PPlayer) notifyTimeToKill(victim *PPlayer, tick int, tickrate float64) 
 			p.logger.WithFields(log.Fields{
 				"sec":  timeToKillSec.Seconds(),
 				"tick": timeToKillTick,
-			}).Info("Amount of time to kill")
+			}).Debug("Amount of time to kill")
 			p.timeHurtToKill += timeToKillSec
 		}
 	}
@@ -848,7 +966,7 @@ func (p *PPlayer) notifyCrosshairReplecament(weapon *player.Equipment) {
 		"after y":  p.ViewDirectionY,
 		"distance": distance,
 		"weapon":   weaponType,
-	}).Info("Amount of crosshair replecament")
+	}).Debug("Amount of crosshair replecament")
 }
 
 // ResetPlayerState resest all player stats
@@ -872,6 +990,7 @@ func (p *PPlayer) ResetPlayerState() {
 	p.lastWfTick = 0
 	p.lastKilledTick = 0
 	p.shotsHit = 0
+	p.numFirstDamage = 0
 	p.numTrader = 0
 	p.numTradee = 0
 	p.kast = 0
@@ -881,8 +1000,10 @@ func (p *PPlayer) ResetPlayerState() {
 	p.hsKill = 0
 	p.kill = 0
 	p.duckKill = 0
+	p.lurkerKill = 0
 	p.totalKillDistance = 0
 	p.lastMemberSurvived = 0
+	p.lastFootstepTick = 0
 	p.firstKill = 0
 	p.death = 0
 	p.assist = 0
@@ -924,6 +1045,7 @@ func (p *PPlayer) ResetPlayerState() {
 	p.numHitStomach = 0
 	// maps
 	p.lastHurt = make(map[int64]*HurtTuples)
+	p.spottedPlayers = make(map[int64]*SpottedPlayer)
 
 }
 
@@ -943,13 +1065,7 @@ func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won int) st
 	}
 	sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", pistolRoundWonPercentage), specifier))
 
-	var hsPercentage float32
-	hsKills := float32(p.hsKill)
-	totalKIlls := float32(p.kill)
-	if totalKIlls > 0 {
-		hsPercentage = hsKills / totalKIlls
-	}
-	sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", hsPercentage), specifier))
+	sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.hsKill), float32(p.kill))), specifier))
 
 	clutchesWon := fmt.Sprintf("%.3f", float32(p.clutchesWon)/roundPlayedf)
 	sb.WriteString(fmt.Sprintf("%s%s", clutchesWon, specifier))
@@ -988,13 +1104,7 @@ func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won int) st
 	timeFlashingOpponent := fmt.Sprintf("%.3f", float32(p.timeFlashingOpponents.Seconds())/roundPlayedf)
 	sb.WriteString(fmt.Sprintf("%s%s", timeFlashingOpponent, specifier))
 
-	var accuracy float32
-	shotsHit := float32(p.shotsHit)
-	totalShot := float32(p.shots)
-	if totalShot > 0 {
-		accuracy = shotsHit / totalShot
-	}
-	accuracyStr := fmt.Sprintf("%.3f", accuracy)
+	accuracyStr := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.shotsHit), float32(p.shots)))
 	sb.WriteString(fmt.Sprintf("%s%s", accuracyStr, specifier))
 
 	numTrader := fmt.Sprintf("%.3f", float32(p.numTrader)/roundPlayedf)
@@ -1008,6 +1118,103 @@ func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won int) st
 
 	mvp := fmt.Sprintf("%.3f", float32(p.numMVP)/roundPlayedf)
 	sb.WriteString(fmt.Sprintf("%s%s", mvp, specifier))
+
+	moneySaved := fmt.Sprintf("%.3f", float32(p.totalSavedMoney)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", moneySaved, specifier))
+
+	sniperKill := fmt.Sprintf("%.3f", float32(p.numKillSniperRifle)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", sniperKill, specifier))
+
+	meleeKill := fmt.Sprintf("%.3f", float32(p.numKillMelee)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", meleeKill, specifier))
+
+	shoutgunKill := fmt.Sprintf("%.3f", float32(p.numKillShotgun)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", shoutgunKill, specifier))
+
+	assultRKill := fmt.Sprintf("%.3f", float32(p.numKillAssultRifle)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", assultRKill, specifier))
+
+	pistolKill := fmt.Sprintf("%.3f", float32(p.numKillPistol)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", pistolKill, specifier))
+
+	machineGunKill := fmt.Sprintf("%.3f", float32(p.numKillMachineGun)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", machineGunKill, specifier))
+
+	smgKill := fmt.Sprintf("%.3f", float32(p.numKillSMG)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", smgKill, specifier))
+
+	totalHit := float32(p.shotsHit)
+	headHit := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.numHitHead), totalHit))
+	sb.WriteString(fmt.Sprintf("%s%s", headHit, specifier))
+
+	stomachHit := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.numHitStomach), totalHit))
+	sb.WriteString(fmt.Sprintf("%s%s", stomachHit, specifier))
+
+	chestHit := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.numHitChest), totalHit))
+	sb.WriteString(fmt.Sprintf("%s%s", chestHit, specifier))
+
+	legsHit := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.numHitLegs), totalHit))
+	sb.WriteString(fmt.Sprintf("%s%s", legsHit, specifier))
+
+	armsHit := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.numHitArms), totalHit))
+	sb.WriteString(fmt.Sprintf("%s%s", armsHit, specifier))
+
+	unitDamageCost := fmt.Sprintf("%.3f", utils.SafeDivision(p.damageCost, float32(p.totalDmg)))
+	sb.WriteString(fmt.Sprintf("%s%s", unitDamageCost, specifier))
+
+	avarageKillDistance := fmt.Sprintf("%.3f", utils.SafeDivision(p.totalKillDistance, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", avarageKillDistance, specifier))
+
+	avaragePlayerSaved := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.savedFriends), roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", avaragePlayerSaved, specifier))
+
+	playerWonHealth := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.totalHealthWon), roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", playerWonHealth, specifier))
+
+	playerLostHealth := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.totalHealthLost), roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", playerLostHealth, specifier))
+
+	lastMemberSurvived := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.lastMemberSurvived), roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", lastMemberSurvived, specifier))
+
+	timeHurtToKill := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.timeHurtToKill.Seconds()), float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", timeHurtToKill, specifier))
+
+	spraySniper := fmt.Sprintf("%.3f", utils.SafeDivision(p.spraySniperRifle, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", spraySniper, specifier))
+
+	sprayShotgun := fmt.Sprintf("%.3f", utils.SafeDivision(p.sprayShotgun, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", sprayShotgun, specifier))
+
+	sprayARifle := fmt.Sprintf("%.3f", utils.SafeDivision(p.sprayAssultRifle, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", sprayARifle, specifier))
+
+	sprayPistol := fmt.Sprintf("%.3f", utils.SafeDivision(p.sprayPistol, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", sprayPistol, specifier))
+
+	sprayMachineGun := fmt.Sprintf("%.3f", utils.SafeDivision(p.sprayMachineGun, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", sprayMachineGun, specifier))
+
+	spraySMG := fmt.Sprintf("%.3f", utils.SafeDivision(p.spraySMG, float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", spraySMG, specifier))
+
+	roundWinPercentage := fmt.Sprintf("%.3f", p.roundWinPercentage)
+	sb.WriteString(fmt.Sprintf("%s%s", roundWinPercentage, specifier))
+
+	roundWinTime := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.totalRoundWinTime.Seconds()), roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", roundWinTime, specifier))
+
+	duckKill := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.duckKill), float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", duckKill, specifier))
+
+	memberDeathDistance := fmt.Sprintf("%.3f", utils.SafeDivision(p.totalMemberKilledDistance, roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", memberDeathDistance, specifier))
+
+	sniperKilled := fmt.Sprintf("%.3f", utils.SafeDivision(float32(p.sniperKilled), float32(p.kill)))
+	sb.WriteString(fmt.Sprintf("%s%s", sniperKilled, specifier))
+
+	occupiedArea := fmt.Sprintf("%.3f", utils.SafeDivision(p.teamOccupiedArea, roundPlayedf))
+	sb.WriteString(fmt.Sprintf("%s%s", occupiedArea, specifier))
 
 	sb.WriteString(fmt.Sprintf("%s", fmt.Sprint(Won)))
 

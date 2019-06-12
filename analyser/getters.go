@@ -9,14 +9,13 @@ import (
 // ########## Internal getters ##############
 // all getter methods
 // getGameTick get current tick of game
-func (analyser *Analyser) getGameTick() int {
+func (analyser *Analyser) getGameTick() (int, bool) {
+	var err bool
 	tick := analyser.parser.GameState().IngameTick()
 	if tick < 0 {
-		analyser.log.WithFields(logging.Fields{
-			"tick": tick,
-		}).Error("Negative tick number")
+		err = true
 	}
-	return tick
+	return tick, err
 }
 
 // getPlayerByID get the pointer to pplayer by player id
@@ -103,14 +102,14 @@ func (analyser *Analyser) getTeams(isdisconnected bool) ([]*common.PPlayer, []*c
 }
 
 // getSinglePlayerID get player id from player sent in an event
-func (analyser *Analyser) getSinglePlayerID(player *p_common.Player, eventName string) (int64, bool) {
+func (analyser *Analyser) getSinglePlayerID(player *p_common.Player, eventName string, tick int) (int64, bool) {
 	var playerID int64
 	var playerOK bool
 
 	if player == nil {
 		analyser.log.WithFields(logging.Fields{
 			"event": eventName,
-			"tick":  analyser.getGameTick(),
+			"tick":  tick,
 		}).Error("Player is nill for event: ")
 	} else {
 		playerID = player.SteamID

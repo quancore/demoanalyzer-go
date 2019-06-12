@@ -1,5 +1,6 @@
 package common
 
+// EqNameToPrice a map to lookup weapon prices
 var EqNameToPrice map[string]int
 
 func init() {

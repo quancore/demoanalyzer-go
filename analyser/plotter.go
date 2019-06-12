@@ -129,8 +129,8 @@ func (p SimplePlotter) Plot(outPath, mapname string, bounds image.Rectangle, cc 
 	draw.Draw(img, bounds, clusterImg, image.ZP, draw.Over)
 
 	// Write to stdout
-	f, o_err := os.Create(outPath)
-	utils.CheckError(o_err)
+	f, OutErr := os.Create(outPath)
+	utils.CheckError(OutErr)
 
 	defer f.Close()
 	err = jpeg.Encode(f, img, &jpeg.Options{Quality: jpegQuality})

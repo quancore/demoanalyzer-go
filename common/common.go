@@ -28,6 +28,12 @@ const (
 
 // ######## Common structs #########
 
+// SpottedPlayer tuple to store a spotted player
+type SpottedPlayer struct {
+	Tick   int
+	Player *PPlayer
+}
+
 // ItemDrop tuple to store a dropped item
 type ItemDrop struct {
 	Tick      int

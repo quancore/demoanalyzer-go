@@ -66,7 +66,6 @@ acs-*.bib
 *.thm
 
 # beamer
-*.nav
 *.pre
 *.snm
 *.vrb

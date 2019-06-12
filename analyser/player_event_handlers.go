@@ -18,7 +18,11 @@ func (analyser *Analyser) dispatchPlayerEvents(e interface{}) {
 	// set event happened to true for this round
 	analyser.isEventHappened = true
 
-	tick := analyser.getGameTick()
+	// check negative tick
+	tick, err := analyser.getGameTick()
+	if err {
+		return
+	}
 	// it is nearly impossible to a player event can happen at the same
 	// time with an round start or end.It is much common to be a server event
 	// like killing all players at the same time for a game reset
@@ -27,45 +31,71 @@ func (analyser *Analyser) dispatchPlayerEvents(e interface{}) {
 			"tick":       tick,
 			"start tick": analyser.roundStart,
 			"end tick":   analyser.roundEnd,
-		}).Info("Invalid event: ")
+		}).Error("Invalid event: ")
 		return
 	}
 
 	// dispatch event to its handler
 	switch e.(type) {
 	case events.Kill:
-		analyser.handleKill(e.(events.Kill))
+		analyser.handleKill(e.(events.Kill), tick)
 	case events.PlayerHurt:
-		analyser.handleHurt(e.(events.PlayerHurt))
+		analyser.handleHurt(e.(events.PlayerHurt), tick)
 	case events.WeaponFire:
-		analyser.handleWeaponFire(e.(events.WeaponFire))
+		analyser.handleWeaponFire(e.(events.WeaponFire), tick)
 	case events.BombDefuseStart:
-		analyser.handleDefuseStart(e.(events.BombDefuseStart))
+		analyser.handleDefuseStart(e.(events.BombDefuseStart), tick)
 	case events.BombDefused:
-		analyser.handleBombDefused(e.(events.BombDefused))
+		analyser.handleBombDefused(e.(events.BombDefused), tick)
 	case events.BombPlanted:
-		analyser.handleBombPlanted(e.(events.BombPlanted))
+		analyser.handleBombPlanted(e.(events.BombPlanted), tick)
 	case events.PlayerFlashed:
-		analyser.handlePlayerFlashed(e.(events.PlayerFlashed))
+		analyser.handlePlayerFlashed(e.(events.PlayerFlashed), tick)
 	case events.RoundMVPAnnouncement:
-		analyser.handlePlayerMVP(e.(events.RoundMVPAnnouncement))
+		analyser.handlePlayerMVP(e.(events.RoundMVPAnnouncement), tick)
 	case events.ItemDrop:
-		analyser.handleItemDropped(e.(events.ItemDrop))
+		analyser.handleItemDropped(e.(events.ItemDrop), tick)
 	case events.ItemPickup:
-		analyser.handleItemPickup(e.(events.ItemPickup))
+		analyser.handleItemPickup(e.(events.ItemPickup), tick)
+	case events.Footstep:
+		analyser.handlePlayerFootstep(e.(events.Footstep), tick)
+	case events.PlayerSpottersChanged:
+		analyser.handlePlayerSpotted(e.(events.PlayerSpottersChanged), tick)
 
 	}
 }
 
+// handlePlayerSpotted handle spotted players
+func (analyser *Analyser) handlePlayerSpotted(e events.PlayerSpottersChanged, tick int) {
+
+	spottedPlayer := e.Spotted
+	spotters := analyser.parser.GameState().Participants().SpottersOf(spottedPlayer)
+	if spottedPPlayer, ok := analyser.getPlayerByID(spottedPlayer.SteamID, false); ok {
+		analyser.log.WithFields(logging.Fields{
+			"tick":           tick,
+			"spotted player": spottedPlayer.Name,
+			"spotted alive":  spottedPlayer.IsAlive(),
+			"spotters":       spotters,
+		}).Info("Spotters of a player has been changed")
+		for _, spotter := range spotters {
+			analyser.log.WithFields(logging.Fields{
+				"tick":            tick,
+				"spotted player":  spottedPlayer.Name,
+				"changed spotter": spotter.Name,
+			}).Info("Spotters of a player has been changed spotter")
+			if spotterPPlayer, ok := analyser.getPlayerByID(spotter.SteamID, true); ok {
+				spotterPPlayer.NotifyPlayerSpotted(spottedPPlayer, tick)
+			}
+		}
+	}
+}
+
 // handleKill handler for kill event
-func (analyser *Analyser) handleKill(e events.Kill) {
-	// declare variables
-	var isVictimBlinded bool
-	tick := analyser.getGameTick()
+func (analyser *Analyser) handleKill(e events.Kill, tick int) {
 
 	// get player pointers
 	// we are checking players disconnected as well
-	victim, killer, victimOK, killerOK := analyser.checkEventValidity(e.Victim, e.Killer, "Kill", true)
+	victim, killer, victimOK, killerOK := analyser.checkEventValidity(e.Victim, e.Killer, "Kill", true, tick)
 
 	// check if victim and attacker exist
 	if !victimOK || !killerOK {
@@ -73,7 +103,7 @@ func (analyser *Analyser) handleKill(e events.Kill) {
 	}
 
 	// get side of players
-	victimSide, killerSide, sideOK := analyser.checkTeamSideValidity(victim, killer, "kill")
+	victimSide, killerSide, sideOK := analyser.checkTeamSideValidity(victim, killer, "kill", tick)
 
 	// get ids of players
 	killerID := killer.GetSteamID()
@@ -157,7 +187,7 @@ func (analyser *Analyser) handleKill(e events.Kill) {
 			lastFlashedPlayerSide, _ := lastFlashedPlayer.GetSide()
 			if lastFlashedID != killerID &&
 				lastFlashedPlayerSide != victimSide {
-				if isVictimBlinded {
+				if victim.IsBlinded() {
 					lastFlashedPlayer.NotifyFlashAssist()
 					// mark player did a kast
 					analyser.kastPlayers[lastFlashedPlayer.SteamID] = true
@@ -177,7 +207,7 @@ func (analyser *Analyser) handleKill(e events.Kill) {
 							"lastvalidtick": int(lastValidFlashTick),
 							"user id":       lastFlashedID,
 							"victim":        victim.Name,
-						}).Info("Possible flash assist: ")
+						}).Debug("Possible flash assist: ")
 					}
 
 				}
@@ -223,31 +253,29 @@ func (analyser *Analyser) handleKill(e events.Kill) {
 }
 
 // handleHurt handler for hurt event
-func (analyser *Analyser) handleHurt(e events.PlayerHurt) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handleHurt(e events.PlayerHurt, tick int) {
 	// get entities in the event and game state variables
 	damage := e.HealthDamage
 	weaponType := e.Weapon.Class()
 
 	// get player pointers
-	victim, attacker, victimOK, attackerOK := analyser.checkEventValidity(e.Player, e.Attacker, "playerHurt", true)
+	victim, attacker, victimOK, attackerOK := analyser.checkEventValidity(e.Player, e.Attacker, "playerHurt", true, tick)
 
 	if !victimOK || !attackerOK {
 		return
 	}
 
 	// check team side validity
-	_, _, sideOK := analyser.checkTeamSideValidity(victim, attacker, "playerHurt")
+	_, _, sideOK := analyser.checkTeamSideValidity(victim, attacker, "playerHurt", tick)
 
 	// check is there any player waiting for round start
 	// if we are in first parse and several players are waiting to join and
 	// this is the first hurt event for this round, check missed players
 	// has been join the game
 	if analyser.isFirstParse && analyser.isPlayerWaiting && !analyser.isPlayerHurt {
-		if _, _, ok := analyser.checkParticipantValidity(); ok {
+		if _, _, ok := analyser.checkParticipantValidity(tick); ok {
 			analyser.log.WithFields(logging.Fields{
-				"tick": analyser.getGameTick(),
+				"tick": tick,
 			}).Info("Late match start has been triggered with player hurt event")
 			analyser.isCancelled = false
 			analyser.isPlayerWaiting = false
@@ -263,6 +291,7 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt) {
 		"attacker": e.Attacker.Name,
 		"health":   e.Health,
 		"damage":   damage,
+		"weapon":   e.Weapon.Weapon.String(),
 	}).Info("Player has been hurt: ")
 
 	// debug purpose
@@ -295,7 +324,7 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt) {
 		// if damage given by a weapon
 		if weaponType != p_common.EqClassUnknown {
 			eqRatio := float32(attacker.GetCurrentEqValue()) / float32(victim.GetCurrentEqValue())
-			attacker.NotifyDamageGiven(e, eqRatio, tick)
+			attacker.NotifyDamageGiven(e, eqRatio, tick, analyser.tickRate)
 			victim.NotifyDamageTaken(damage)
 		}
 	}
@@ -303,23 +332,23 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt) {
 }
 
 // handleWeaponFire handler for weapon fire event
-func (analyser *Analyser) handleWeaponFire(e events.WeaponFire) {
-	tick := analyser.getGameTick()
+func (analyser *Analyser) handleWeaponFire(e events.WeaponFire, tick int) {
 	shooterID := e.Shooter.SteamID
 
 	// determine the type of round in the first
 	// player hurt event of second parsing
 	if !(analyser.isWeaponFired || analyser.isFirstParse) {
-		analyser.setRoundType()
+		analyser.setRoundType(tick)
 	}
 
 	analyser.isWeaponFired = true
 	if shooter, ok := analyser.getPlayerByID(shooterID, true); ok {
 		shooter.NotifyWeaponFire(tick)
 		analyser.log.WithFields(logging.Fields{
-			"tick":    tick,
-			"name":    e.Shooter.Name,
-			"user id": shooterID,
+			"tick":        tick,
+			"name":        e.Shooter.Name,
+			"user id":     shooterID,
+			"weapon type": e.Weapon.Weapon.String(),
 		}).Info("Player fired a weapon: ")
 	} else {
 		analyser.log.WithFields(logging.Fields{
@@ -331,9 +360,7 @@ func (analyser *Analyser) handleWeaponFire(e events.WeaponFire) {
 }
 
 // handleBombDefused handler for bomb defuse event
-func (analyser *Analyser) handleBombDefused(e events.BombDefused) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handleBombDefused(e events.BombDefused, tick int) {
 	defuserID := e.Player.SteamID
 
 	if defuser, ok := analyser.getPlayerByID(defuserID, true); ok {
@@ -354,9 +381,7 @@ func (analyser *Analyser) handleBombDefused(e events.BombDefused) {
 }
 
 // handleBombPlanted handler for bomb planted event
-func (analyser *Analyser) handleBombPlanted(e events.BombPlanted) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handleBombPlanted(e events.BombPlanted, tick int) {
 	planterID := e.Player.SteamID
 
 	if planter, ok := analyser.getPlayerByID(planterID, true); ok {
@@ -376,9 +401,7 @@ func (analyser *Analyser) handleBombPlanted(e events.BombPlanted) {
 }
 
 // handleDefuseStart handler for bomb defuse start event
-func (analyser *Analyser) handleDefuseStart(e events.BombDefuseStart) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handleDefuseStart(e events.BombDefuseStart, tick int) {
 	defuserID := e.Player.SteamID
 
 	if defuser, ok := analyser.getPlayerByID(defuserID, true); ok {
@@ -399,12 +422,10 @@ func (analyser *Analyser) handleDefuseStart(e events.BombDefuseStart) {
 }
 
 // handlePlayerFlashed handle player flashed event
-func (analyser *Analyser) handlePlayerFlashed(e events.PlayerFlashed) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handlePlayerFlashed(e events.PlayerFlashed, tick int) {
 	// get player pointers
 	// we are checking players disconnected as well
-	flashed, flasher, flashedOK, flasherOK := analyser.checkEventValidity(e.Player, e.Attacker, "Flash", true)
+	flashed, flasher, flashedOK, flasherOK := analyser.checkEventValidity(e.Player, e.Attacker, "Flash", true, tick)
 
 	// check if victim and attacker exist
 	if !flashedOK || !flasherOK {
@@ -412,7 +433,7 @@ func (analyser *Analyser) handlePlayerFlashed(e events.PlayerFlashed) {
 	}
 
 	// get side of players
-	_, _, ok := analyser.checkTeamSideValidity(flashed, flasher, "Flash")
+	_, _, ok := analyser.checkTeamSideValidity(flashed, flasher, "Flash", tick)
 
 	if !ok {
 		// if two player in the same side we need to reset last flasher
@@ -453,11 +474,9 @@ func (analyser *Analyser) handlePlayerFlashed(e events.PlayerFlashed) {
 }
 
 // handlePlayerFlashed handle player flashed event
-func (analyser *Analyser) handlePlayerMVP(e events.RoundMVPAnnouncement) {
-	tick := analyser.getGameTick()
-
+func (analyser *Analyser) handlePlayerMVP(e events.RoundMVPAnnouncement, tick int) {
 	// get ids
-	playerID, playerOK := analyser.getSinglePlayerID(e.Player, "MVP Announcement")
+	playerID, playerOK := analyser.getSinglePlayerID(e.Player, "MVP Announcement", tick)
 
 	// check if player not nill
 	if !playerOK {
@@ -479,8 +498,7 @@ func (analyser *Analyser) handlePlayerMVP(e events.RoundMVPAnnouncement) {
 
 }
 
-func (analyser *Analyser) handleItemDropped(e events.ItemDrop) {
-	tick := analyser.getGameTick()
+func (analyser *Analyser) handleItemDropped(e events.ItemDrop, tick int) {
 	weapon := e.Weapon
 
 	if e.Player == nil || e.Player.IsAlive() == false {
@@ -506,8 +524,7 @@ func (analyser *Analyser) handleItemDropped(e events.ItemDrop) {
 	}
 }
 
-func (analyser *Analyser) handleItemPickup(e events.ItemPickup) {
-	tick := analyser.getGameTick()
+func (analyser *Analyser) handleItemPickup(e events.ItemPickup, tick int) {
 	weapon := e.Weapon
 	weaponName := weapon.Weapon.String()
 
@@ -559,12 +576,23 @@ func (analyser *Analyser) handleItemPickup(e events.ItemPickup) {
 
 }
 
+func (analyser *Analyser) handlePlayerFootstep(e events.Footstep, tick int) {
+	player := e.Player
+	if pplayer, OK := analyser.getPlayerByID(player.SteamID, false); OK {
+		// analyser.log.WithFields(logging.Fields{
+		// 	"tick":   tick,
+		// 	"player": pplayer.Name,
+		// }).Info("Footstep ")
+		pplayer.NotifyPlayerFootstep(tick)
+	}
+}
+
 // *********** User defined event handlers ***************
 
 // handleKAST notify players who did kast for this round
-func (analyser *Analyser) handleKAST() {
+func (analyser *Analyser) handleKAST(tick int) {
 	analyser.log.WithFields(logging.Fields{
-		"tick": analyser.getGameTick(),
+		"tick": tick,
 	}).Info("Handling KAST for players ")
 
 	for currPlayerID, kastbool := range analyser.kastPlayers {
@@ -619,7 +647,7 @@ func (analyser *Analyser) handleClutchSituation(winnerTS p_common.Team, tick int
 }
 
 // handleSpecialRound handle special round won and loss
-func (analyser *Analyser) handleSpecialRound(winnerT, loserT p_common.Team) {
+func (analyser *Analyser) handleSpecialRound(winnerT, loserT p_common.Team, tick int) {
 	// get team members
 	gs := analyser.parser.GameState()
 	participants := gs.Participants()
@@ -644,7 +672,7 @@ func (analyser *Analyser) handleSpecialRound(winnerT, loserT p_common.Team) {
 		analyser.log.WithFields(logging.Fields{
 			"winner team": winnerT,
 			"loser team":  loserT,
-			"tick":        analyser.getGameTick(),
+			"tick":        tick,
 		}).Error("Invalid team type for handling round type")
 		return
 	}
@@ -654,7 +682,7 @@ func (analyser *Analyser) handleSpecialRound(winnerT, loserT p_common.Team) {
 		"loser team":    loserTS.ClanName,
 		"T round type":  analyser.currentTRoundType,
 		"CT round type": analyser.currentCTRoundType,
-		"tick":          analyser.getGameTick(),
+		"tick":          tick,
 	}).Info("Handling type of the round")
 
 	// winner team

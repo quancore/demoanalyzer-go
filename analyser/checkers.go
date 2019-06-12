@@ -106,14 +106,14 @@ import (
 // checkEventValidity check validity of ids of given attacker and victim IDs
 // return player pointers
 // suitable for use of kill and player hurt events
-func (analyser *Analyser) checkEventValidity(victim, killer *p_common.Player, eventName string, allPlayer bool) (*common.PPlayer, *common.PPlayer, bool, bool) {
+func (analyser *Analyser) checkEventValidity(victim, killer *p_common.Player, eventName string, allPlayer bool, tick int) (*common.PPlayer, *common.PPlayer, bool, bool) {
 	var victimOK, killerOK bool
 	var victimP, killerP *common.PPlayer
 
 	if killer == nil || victim == nil {
 		analyser.log.WithFields(logging.Fields{
 			"event": eventName,
-			"tick":  analyser.getGameTick(),
+			"tick":  tick,
 		}).Error("Victim or killer is nill for event: ")
 	} else {
 		// get player pointers
@@ -126,7 +126,7 @@ func (analyser *Analyser) checkEventValidity(victim, killer *p_common.Player, ev
 		if !victimOK || !killerOK {
 			analyser.log.WithFields(logging.Fields{
 				"event name":  eventName,
-				"tick":        analyser.getGameTick(),
+				"tick":        tick,
 				"victim ok":   victimOK,
 				"attacker ok": killerOK,
 				"victim name": victim.Name,
@@ -140,9 +140,9 @@ func (analyser *Analyser) checkEventValidity(victim, killer *p_common.Player, ev
 
 // checkMatchValidity return true if match started and not yet finished
 func (analyser *Analyser) checkMatchValidity() bool {
-	tick := analyser.getGameTick()
+	_, err := analyser.getGameTick()
 
-	if analyser.matchEnded || !analyser.matchStarted || tick < 0 {
+	if analyser.matchEnded || !analyser.matchStarted || err {
 		return false
 	}
 	return true
@@ -169,8 +169,7 @@ func (analyser *Analyser) checkFinishedRoundValidity(e events.RoundEnd) bool {
 }
 
 // checkMatchContinuity check whether match is continuing with overtime
-func (analyser *Analyser) checkMatchContinuity() bool {
-	tick := analyser.getGameTick()
+func (analyser *Analyser) checkMatchContinuity(tick int) bool {
 	ctScore := analyser.ctScore
 	tScore := analyser.tScore
 	var isMatchEnded bool
@@ -200,8 +199,11 @@ func (analyser *Analyser) checkMatchContinuity() bool {
 			analyser.notifyAllMatchEnd(tScore, ctScore)
 			analyser.printPlayers()
 			analyser.writeToFile(analyser.outPath)
-			analyser.printHeadmap()
-			analyser.clusterPoints()
+			if analyser.mapMetadata != nil {
+				analyser.printHeadmap()
+				analyser.clusterPoints()
+			}
+
 			analyser.isOvertime = false
 			analyser.matchEnded = true
 			// set file succesfully analyzed
@@ -287,8 +289,7 @@ func (analyser *Analyser) checkClutchSituation() {
 // checkTeamSideValidity check validity of players with respect to their teams
 // return player pointers
 // suitable for use of kill and player hurt events
-func (analyser *Analyser) checkTeamSideValidity(victim, killer *common.PPlayer, eventName string) (p_common.Team, p_common.Team, bool) {
-	tick := analyser.getGameTick()
+func (analyser *Analyser) checkTeamSideValidity(victim, killer *common.PPlayer, eventName string, tick int) (p_common.Team, p_common.Team, bool) {
 	// get side of players
 	victimSide, vSideOK := victim.GetSide()
 	killerSide, KSideOK := killer.GetSide()
@@ -324,10 +325,10 @@ func (analyser *Analyser) checkTeamSideValidity(victim, killer *common.PPlayer, 
 // checkParticipantValidity check number of participant for each team
 // return teams for each side
 // useful to check before a match begins
-func (analyser *Analyser) checkParticipantValidity() ([]*p_common.Player, []*p_common.Player, bool) {
+func (analyser *Analyser) checkParticipantValidity(tick int) ([]*p_common.Player, []*p_common.Player, bool) {
 	// sometimes, at tick 0, players are getting connected after matchstarted
 	// so there is a special case for tick 0
-	if analyser.getGameTick() == 0 {
+	if tick == 0 {
 		return nil, nil, true
 	}
 	// first get players
@@ -416,6 +417,22 @@ func (analyser *Analyser) checkTeamValidity(Team p_common.Team) bool {
 	if Team == p_common.TeamTerrorists || Team == p_common.TeamCounterTerrorists {
 		return true
 	}
+	return false
+}
+
+// checkRoundEventValid check given event tick is in the range of current valid round
+// using for second parsing
+func (analyser *Analyser) checkRoundEventValid(tick int) bool {
+	curValidEnd := analyser.roundEnd
+	if analyser.roundOffEnd > 0 {
+		curValidEnd = analyser.roundOffEnd
+	}
+
+	// current round is ongoing, the event is already valid
+	if analyser.roundStart <= tick && curValidEnd >= tick {
+		return true
+	}
+
 	return false
 }
 

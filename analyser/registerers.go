@@ -69,6 +69,8 @@ func (analyser *Analyser) registerPlayerEventHandlers() {
 	analyser.parser.RegisterEventHandler(func(e events.RoundMVPAnnouncement) { analyser.dispatchPlayerEvents(e) })
 	analyser.parser.RegisterEventHandler(func(e events.ItemDrop) { analyser.dispatchPlayerEvents(e) })
 	analyser.parser.RegisterEventHandler(func(e events.ItemPickup) { analyser.dispatchPlayerEvents(e) })
+	analyser.parser.RegisterEventHandler(func(e events.Footstep) { analyser.dispatchPlayerEvents(e) })
+	analyser.parser.RegisterEventHandler(func(e events.PlayerSpottersChanged) { analyser.dispatchPlayerEvents(e) })
 
 	// **************************************************
 	// registered for testing purpose
@@ -127,19 +129,41 @@ func (analyser *Analyser) registerFirstPlayerEventHandlers() {
 	// it is used for indicating a player has been hurt in a round for the first parse
 	// therefore it is registered in the first parsing
 	if analyser.isFirstParse {
-		analyser.parser.RegisterEventHandler(func(e events.PlayerHurt) { analyser.handleHurt(e) })
+		analyser.parser.RegisterEventHandler(func(e events.PlayerHurt) {
+			tick, _ := analyser.getGameTick()
+			analyser.handleHurt(e, tick)
+		})
 		// it is very rare however, there could be some round that no one get hurts and bomb has been
 		// exploded and a team win the round. So we need to record bomb planted event as well in the
 		// first parse to understand a round is valid.
-		analyser.parser.RegisterEventHandler(func(e events.BombPlanted) { analyser.handleBombPlanted(e) })
-		analyser.parser.RegisterEventHandler(func(e events.Kill) { analyser.handleCheckKill(e) })
+		analyser.parser.RegisterEventHandler(func(e events.BombPlanted) {
+			tick, _ := analyser.getGameTick()
+			analyser.handleBombPlanted(e, tick)
+		})
+		analyser.parser.RegisterEventHandler(func(e events.Kill) {
+			tick, _ := analyser.getGameTick()
+			analyser.handleCheckKill(e, tick)
+		})
 		analyser.log.Info("Player event handlers have been registered for first parse.")
 
 	}
 }
 
 func (analyser *Analyser) registerScheduler() {
-	analyser.parser.RegisterEventHandler(func(e events.TickDone) { analyser.customScheduler.checkEvent(analyser.getGameTick()) })
+	analyser.parser.RegisterEventHandler(func(e events.TickDone) {
+
+		// because this event has been triggered not at the end of each tick but each frame,
+		// we need to check skipped ticks after last checked tick
+		currentTick, err := analyser.getGameTick()
+
+		if !err {
+			for i := analyser.lastCheckedTick; i < currentTick; i++ {
+				analyser.customScheduler.checkEvent(i)
+			}
+			analyser.lastCheckedTick = currentTick
+		}
+
+	})
 	analyser.log.Info("Scheduler for custom event handlers has been registered.")
 
 }
