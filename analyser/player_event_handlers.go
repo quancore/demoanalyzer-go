@@ -168,6 +168,7 @@ func (analyser *Analyser) handleKill(e events.Kill, tick int) {
 				}
 			}
 		}
+
 	}
 
 	// we will check is there a flash assist
@@ -184,6 +185,11 @@ func (analyser *Analyser) handleKill(e events.Kill, tick int) {
 
 			// Right now, underflowed flash counts are caused by is blinded method
 			// sometimes it falsely finds a player not blind so there is not flash assist
+
+			// The wrong flash assict can be caused by we are just storing last flasher of a victim.
+			// If the last flasher and the killer is the same, we give up the flash assist.
+			// However, there can be other flasher other than killer and if there are killing event
+			// the flash assist should be given to that player.
 			lastFlashedPlayerSide, _ := lastFlashedPlayer.GetSide()
 			if lastFlashedID != killerID &&
 				lastFlashedPlayerSide != victimSide {
@@ -202,15 +208,27 @@ func (analyser *Analyser) handleKill(e events.Kill, tick int) {
 					lastValidFlashTick := victim.GetLastValidTick()
 					if int(lastValidFlashTick) > tick {
 						analyser.log.WithFields(logging.Fields{
-							"name":          lastFlashedPlayer.Name,
-							"tick":          tick,
-							"lastvalidtick": int(lastValidFlashTick),
-							"user id":       lastFlashedID,
-							"victim":        victim.Name,
+							"last flasher name": lastFlashedPlayer.Name,
+							"killer name":       killer.Name,
+							"victim name":       victim.Name,
+							"tick":              tick,
+							"lastvalidtick":     int(lastValidFlashTick),
+							"last flasher id":   lastFlashedID,
 						}).Debug("Possible flash assist: ")
 					}
 
 				}
+			} else {
+				analyser.log.WithFields(logging.Fields{
+					"last flasher name":     lastFlashedPlayer.Name,
+					"killer name":           killer.Name,
+					"victim name":           victim.Name,
+					"tick":                  tick,
+					"lastFlashedID":         lastFlashedID,
+					"killerID":              killerID,
+					"lastFlashedPlayerSide": lastFlashedPlayerSide,
+					"victimSide":            victimSide,
+				}).Debug("Possible flash assist: Side wrong")
 			}
 		}
 	}
@@ -269,8 +287,8 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt, tick int) {
 	_, _, sideOK := analyser.checkTeamSideValidity(victim, attacker, "playerHurt", tick)
 
 	// check is there any player waiting for round start
-	// if we are in first parse and several players are waiting to join and
-	// this is the first hurt event for this round, check missed players
+	// if we are in first parse and several players are waiting to join or got disconnected
+	// and this is the first hurt event for this round, check missed players
 	// has been join the game
 	if analyser.isFirstParse && analyser.isPlayerWaiting && !analyser.isPlayerHurt {
 		if _, _, ok := analyser.checkParticipantValidity(tick); ok {
@@ -282,6 +300,11 @@ func (analyser *Analyser) handleHurt(e events.PlayerHurt, tick int) {
 			// call match start again
 			analyser.handleMatchStart("late_match_start")
 		}
+	} else if analyser.isPlayerWaiting {
+		analyser.log.WithFields(logging.Fields{
+			"tick":           tick,
+			"is player hurt": analyser.isPlayerHurt,
+		}).Info("No late match start has been triggered")
 	}
 
 	// handle victim

@@ -312,6 +312,7 @@ func (analyser *Analyser) handleMatchStart(eventName string) {
 		// maybe several player can join later
 		// so set the flag for waiting
 		analyser.isPlayerWaiting = true
+		analyser.isPlayerHurt = false
 		return
 	}
 
