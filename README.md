@@ -35,7 +35,7 @@ It is highly appreciated to introduce new game features to summerize players and
 It is highly possible that the analyzer can fail to analyze a demofile. Because demofiles are very messy, there is no guarantee that this analyzer can analyze all kind of demo files. If you encounter an runtime error or get wrong statistics of a player, simply do: 
  - Create an issue indicating what is the problem (runtime error, statistical error etc.).
  - Put the related demo file url and the result page of the match if possible.
- - Put the log file created by the analyzer.
+ - Change log level to debug using TOML file and put the log file created by the analyzer.
 
 ## Known issues
 
