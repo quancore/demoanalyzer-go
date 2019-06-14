@@ -1128,8 +1128,8 @@ func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won int) st
 	meleeKill := fmt.Sprintf("%.3f", float32(p.numKillMelee)/roundPlayedf)
 	sb.WriteString(fmt.Sprintf("%s%s", meleeKill, specifier))
 
-	shoutgunKill := fmt.Sprintf("%.3f", float32(p.numKillShotgun)/roundPlayedf)
-	sb.WriteString(fmt.Sprintf("%s%s", shoutgunKill, specifier))
+	shotgunKill := fmt.Sprintf("%.3f", float32(p.numKillShotgun)/roundPlayedf)
+	sb.WriteString(fmt.Sprintf("%s%s", shotgunKill, specifier))
 
 	assultRKill := fmt.Sprintf("%.3f", float32(p.numKillAssultRifle)/roundPlayedf)
 	sb.WriteString(fmt.Sprintf("%s%s", assultRKill, specifier))
