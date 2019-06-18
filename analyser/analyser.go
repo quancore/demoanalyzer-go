@@ -179,7 +179,7 @@ type Analyser struct {
 	// ***********************************************
 	// ****** kill positions *************************
 	killPositions []*common.KillPosition
-	roundWinners  map[int]p_common.Team
+	roundWinners  map[int]string
 
 	// ***********************************************
 	// scheduler for custom events

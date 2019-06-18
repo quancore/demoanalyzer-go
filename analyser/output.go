@@ -27,12 +27,16 @@ func (analyser *Analyser) printPlayers() {
 
 	teamWon := analyser.getWinnerTeam()
 	gs := analyser.parser.GameState()
+	teamWonState := gs.Team(teamWon)
+
+	tScore, ctScore := analyser.tScore, analyser.ctScore
 
 	analyser.log.WithFields(logging.Fields{
-		"t score":      analyser.tScore,
-		"ct score":     analyser.ctScore,
-		"winner team":  gs.Team(teamWon).ClanName,
-		"played round": analyser.roundPlayed,
+		"t score":             tScore,
+		"ct score":            ctScore,
+		"winner team":         teamWonState.ClanName,
+		"played round":        analyser.roundPlayed,
+		"round winner string": analyser.createRoundString(teamWonState.ClanName),
 	}).Info("Match has been finished: ")
 
 	for _, currPlayer := range analyser.getAllPlayers() {
@@ -49,6 +53,7 @@ func (analyser *Analyser) printPlayers() {
 			"name":                               currPlayer.Name,
 			"team":                               currPlayer.TeamState.ClanName,
 			"team number":                        currPlayer.Team,
+			"player team score":                  currPlayer.GetPlayerScore(tScore, ctScore),
 			"kill":                               currPlayer.GetNumKills(),
 			"first kill":                         currPlayer.GetNumFirstKills(),
 			"parser kill":                        currPlayer.Player.AdditionalPlayerInformation.Kills,
@@ -113,6 +118,25 @@ func (analyser *Analyser) printPlayers() {
 	}
 }
 
+// createRoundString create each round winners represented in a string
+// zero represent won rounds by the winner of the match, one otherwise.
+func (analyser *Analyser) createRoundString(winnerTeamName string) string {
+	var sb strings.Builder
+	roundPlayed := analyser.roundPlayed
+	for roundNum := 1; roundNum <= roundPlayed; roundNum++ {
+		if roundWinnerName, ok := analyser.roundWinners[roundNum]; ok {
+			var roundWinnerBit int
+			if winnerTeamName != roundWinnerName {
+				roundWinnerBit = 1
+			}
+
+			sb.WriteString(fmt.Sprintf("%s|", fmt.Sprint(roundWinnerBit)))
+		}
+
+	}
+	return sb.String()
+}
+
 // printPlayers print player stats after finished the match
 func (analyser *Analyser) writeToFile(path string) {
 	file, err := os.Create(path)
@@ -143,15 +167,19 @@ func (analyser *Analyser) writeToFile(path string) {
 		analyser.testGameState()
 		analyser.testParticipant()
 	}
-	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s, round_played=%d", analyzerVersion, mapname, roundPlayed))
+
+	gs := analyser.parser.GameState()
+
+	teamWon := analyser.getWinnerTeam()
+	roundString := analyser.createRoundString(gs.Team(teamWon).ClanName)
+
+	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s, round_played=%d round_string=%s",
+		analyzerVersion, mapname, roundPlayed, roundString))
 	w.WriteByte('\n')
 	w.Flush()
 	w.WriteString(features)
 	w.WriteByte('\n')
 	w.Flush()
-	gs := analyser.parser.GameState()
-
-	teamWon := analyser.getWinnerTeam()
 
 	analyser.log.WithFields(logging.Fields{
 		"t score":      analyser.tScore,
@@ -173,7 +201,7 @@ func (analyser *Analyser) writeToFile(path string) {
 				"name":     currPlayer.Name,
 				"team":     currPlayer.Team,
 				"old team": currPlayer.GetOldTeam(),
-			}).Info("Player team and old team is wrong ")
+			}).Info("Player team or old team is wrong ")
 			continue
 		} else if currPlayer.GetNumKills() <= 0 && currPlayer.GetNumDeaths() <= 0 {
 			analyser.log.WithFields(logging.Fields{
@@ -190,7 +218,7 @@ func (analyser *Analyser) writeToFile(path string) {
 		if teamWon == common.TeamUnassigned || currPlayer.Team == teamWon {
 			winLabel = 1
 		}
-		sb = currPlayer.OutputPlayerState(sb, analyser.roundPlayed, winLabel)
+		sb = currPlayer.OutputPlayerState(sb, analyser.roundPlayed, winLabel, analyser.tScore, analyser.ctScore)
 
 	}
 

@@ -182,6 +182,8 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 				"ct score":           analyser.ctScore,
 				"tick":               tick,
 				"winner":             common.GetSideString(winnerTS.Team()),
+				"winner name":        winnerTS.ClanName,
+				"winner ID":          winnerTS.ID,
 				"event":              eventString,
 				"round number":       analyser.roundPlayed,
 				"round time tick":    roundDurationTick,
@@ -190,6 +192,9 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 
 			// update last round called
 			analyser.lastRoundEndCalled = analyser.roundPlayed
+
+			// record winner of the round
+			analyser.roundWinners[analyser.roundPlayed] = winnerTS.ClanName
 
 			// check match is ended if there is no official end for
 			// this round and also handle KAST as well
@@ -202,9 +207,6 @@ func (analyser *Analyser) handleRoundEnd(e interface{}) {
 				analyser.handleKAST(tick)
 				analyser.checkMatchContinuity(tick)
 			}
-
-			// record winner of the round
-			analyser.roundWinners[analyser.roundPlayed] = winnerTS.Team()
 
 			// reset round end for duplicate calls in same tick
 			analyser.roundEnd = 0

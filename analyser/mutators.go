@@ -35,6 +35,7 @@ func (analyser *Analyser) resetAnalyserVars() {
 	// initilize maps for further use
 	analyser.players = make(map[int64]*common.PPlayer)
 	analyser.disconnectedPlayers = make(map[int64]*common.DisconnectedTuple)
+	analyser.roundWinners = make(map[int]string)
 	analyser.killPositions = nil
 	analyser.NumOvertime = 6
 	analyser.minPlayedRound = 5
@@ -49,7 +50,6 @@ func (analyser *Analyser) initilizeRoundMaps(teamT, teamCT []*p_common.Player, t
 	analyser.resetAlivePlayers(teamT, teamCT)
 	analyser.killedPlayers = make(map[int64][]*common.KillTuples)
 	analyser.kastPlayers = make(map[int64]bool)
-	analyser.roundWinners = make(map[int]p_common.Team)
 	analyser.droppedItems = make(map[int64]*common.ItemDrop)
 
 }

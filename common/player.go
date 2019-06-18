@@ -231,6 +231,16 @@ func (p *PPlayer) GetUserName() string { return p.Name }
 // GetSteamID get steam id
 func (p *PPlayer) GetSteamID() int64 { return p.SteamID }
 
+// GetPlayerScore return player team score
+func (p *PPlayer) GetPlayerScore(tScore, ctScore int) int {
+	if p.Team == player.TeamCounterTerrorists {
+		return ctScore
+	} else if p.Team == player.TeamTerrorists {
+		return tScore
+	}
+	return 0
+}
+
 // GettLastYawPitch get lastly recorded yaw and pitch value
 func (p *PPlayer) GettLastYawPitch() (float32, float32) {
 	return p.lastViewDirectionX, p.lastViewDirectionY
@@ -1050,12 +1060,15 @@ func (p *PPlayer) ResetPlayerState() {
 }
 
 // OutputPlayerState output as string form of current player state
-func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won int) strings.Builder {
+func (p *PPlayer) OutputPlayerState(sb strings.Builder, roundPlayed, Won, tScore, ctScore int) strings.Builder {
 	roundPlayedf := float32(roundPlayed)
+	// score := p.GetPlayerScore(tScore, ctScore)
 
 	playerName := p.Name
 	playerName = strings.Replace(playerName, specifier, " ", -1)
 	sb.WriteString(fmt.Sprintf("%s%s", playerName, specifier))
+
+	// sb.WriteString(fmt.Sprintf("%s%s", fmt.Sprint(score), specifier))
 
 	var pistolRoundWonPercentage float32
 	pistolROundsWon := float32(p.pistolRoundWon)
