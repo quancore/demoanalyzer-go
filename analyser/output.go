@@ -173,7 +173,7 @@ func (analyser *Analyser) writeToFile(path string) {
 	teamWon := analyser.getWinnerTeam()
 	roundString := analyser.createRoundString(gs.Team(teamWon).ClanName)
 
-	w.WriteString(fmt.Sprintf("analyzer_version=%s, mapname=%s, round_played=%d, round_string=%s",
+	w.WriteString(fmt.Sprintf("version=%s, demo_mapname=%s, round_played=%d, round_winners=%s",
 		analyzerVersion, mapname, roundPlayed, roundString))
 	w.WriteByte('\n')
 	w.Flush()
