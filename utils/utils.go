@@ -13,6 +13,8 @@ import (
 	viper "github.com/spf13/viper"
 )
 
+const float32EqualityThreshold = 1e-6
+
 // CheckError check whether an error occured
 func CheckError(err error) {
 	if err != nil {
@@ -191,7 +193,7 @@ func Minf32(x, y float32) (float32, bool) {
 // SafeDivision divide given numbers. If divider 0, return 0
 func SafeDivision(number, divider float32) float32 {
 	var result float32
-	if divider != 0 {
+	if Absf32(divider-0) > float32EqualityThreshold {
 		result = number / divider
 	}
 

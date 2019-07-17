@@ -603,7 +603,9 @@ func (p *PPlayer) NotifyRoundEnd(endedRound int, winnerTeam player.Team, duratio
 		// add remaining health to total
 		if winnerTeam == p.Team {
 			// add total round time to won round time
-			p.totalRoundWinTime += duration
+			if 0 < duration {
+				p.totalRoundWinTime += duration
+			}
 			p.setTotalHealthWon(p.Hp)
 		} else {
 			p.setTotalHealthLost(p.Hp)
@@ -920,13 +922,16 @@ func (p *PPlayer) notifyTimeToKill(victim *PPlayer, tick int, tickrate float64) 
 	if hurtTuple, ok := hurtByKiller[victim.GetSteamID()]; ok {
 		firstHurtTick := hurtTuple.FirstHurtTick
 		timeToKillTick := tick - firstHurtTick
-		timeToKillSec := TickToSeconds(timeToKillTick, tickrate)
-		if timeToKillSec.Seconds() < 10 {
+		timeToKillDuration := TickToSeconds(timeToKillTick, tickrate)
+		timeToKillSeconds := timeToKillDuration.Seconds()
+		if 0 < timeToKillSeconds && timeToKillSeconds < 10 {
 			p.logger.WithFields(log.Fields{
-				"sec":  timeToKillSec.Seconds(),
+				"sec":  timeToKillSeconds,
 				"tick": timeToKillTick,
 			}).Debug("Amount of time to kill")
-			p.timeHurtToKill += timeToKillSec
+			if 0 < timeToKillDuration {
+				p.timeHurtToKill += timeToKillDuration
+			}
 		}
 	}
 }
@@ -1007,6 +1012,7 @@ func (p *PPlayer) ResetPlayerState() {
 	p.numMVP = 0
 	p.timeFlashingOpponents = 0
 	p.timeHurtToKill = 0
+	p.totalRoundWinTime = 0
 	p.hsKill = 0
 	p.kill = 0
 	p.duckKill = 0
