@@ -5,7 +5,13 @@ CS:GO demo analyzer written in golang. It is used a [parser](https://github.com/
 
 ## Purpose
 
-The analyzer has mainly written for a master project about prediction of cs:go player rankings. The purpose of the analyzer is extracting useful features that can summerize the game as good as it can. There will be addding more advanced features to indicate team strategies as well as complicated interactions within players. 
+The analyzer has mainly written for a master project about prediction of cs:go player rankings. The purpose of the analyzer is extracting useful features that can summerize the game as good as it can. There will be addding more advanced features to indicate team strategies as well as complicated interactions within players.
+
+Link to master thesis: https://drive.google.com/open?id=1JXIB57BA2XBTYVLSy6Xg_5nfL6dWyDmG
+
+## How it works?
+
+You can check how it works by checking **Demo file analysis** section of my master thesis.
  
 ## Requirements
 
