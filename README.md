@@ -17,7 +17,7 @@ It's recommended to use modules for consumers as well if possible. If you are un
 
 Simply do:  `go get -u github.com/quancore/demoanalyzer-go`
 
-## Running of analyzer
+## Commands of analyzer
 
 Simply indicate path of the demofile, path of output file and path of log file and then run the main package. It will create normalized features for each player in a text file. Example given below:
 
@@ -25,6 +25,19 @@ Simply indicate path of the demofile, path of output file and path of log file a
     ./demoanalyzer-go --demofilepath natus-vincere-vs-avangar-m2-train.dem --outpath stat.txt --checkanalyzer --logfilepath log.txt
 
 `--checkanalyzer`: Very useful flag for checking the results of analyzer. It is very helpful to find out whether a demo file has been analyzer correctly.
+
+Example command to build:
+`go build -o ./bin/demoanalyzer-go`
+
+Example command to print all events using underlying parser
+`go run -tags debugdemoinfocs examples/print-events/print_events.go -demo /paath/to/demofile > out.log`
+
+Example command to run test cases:
+`cd test_analyser/`
+`go test -v -short -timeout 9000s> out.log`
+
+Example command to run:
+`./demoanalyzer-go --demofilepath /path/to/demofile --outpath /path/to/outfile --checkanalyzer --logfilepath /path/to/logfile`
 
 ## Feature request
 
