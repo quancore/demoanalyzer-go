@@ -20,7 +20,7 @@ mapnameAlias = { cobblestone = "cbble" }
 
 [test]
 # the directory path of all working demo files
-demofile_path = "/home/baran/Desktop/demo_files/working_demos"
+demofile_path = "csgo-demos"
 log_prefix = "log"
 log_level = "info"
 output_prefix = "stat"

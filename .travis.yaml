@@ -1,0 +1,17 @@
+language: go
+
+go:
+- 1.11.x
+- stable
+- master
+
+before_install:
+- go get -u github.com/markus-wa/demoinfocs-golang
+
+before_script:
+ # Download test data
+- pushd csgo-demos && git lfs pull -I '*' && popd
+script:
+- go build -o ./bin/demoanalyzer-go
+- cd test_analyser/
+- go test -v -short -timeout 9000s> out.log
