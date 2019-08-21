@@ -1,0 +1,3 @@
+[submodule "csgo-demos"]
+	path = csgo-demos
+	url = https://gitlab.com/quancore/csgo-demos.git
