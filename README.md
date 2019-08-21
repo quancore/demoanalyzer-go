@@ -1,4 +1,4 @@
-# CS:GO Demo analyzer
+# CS:GO Demo analyzer [![Build Status](https://travis-ci.com/quancore/demoanalyzer-go.svg?branch=master)](https://travis-ci.com/quancore/demoanalyzer-go)
 
 CS:GO demo analyzer written in golang. It is used a [parser](https://github.com/markus-wa/demoinfocs-golang) written in golang as well. 
 
