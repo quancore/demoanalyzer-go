@@ -1,4 +1,4 @@
-[submodule "cs-demos"]
-	path = cs-demos
+[submodule "csgo-demos"]
+	path = csgo-demos
 	url = https://gitlab.com/quancore/csgo-demos.git
 	branch = master
