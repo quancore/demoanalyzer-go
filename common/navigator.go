@@ -16,6 +16,7 @@ const (
 	navMapDir = "nav_files"
 )
 
+// store place name and additional info about place
 type place struct {
 	name           string
 	area           float32
@@ -158,7 +159,7 @@ func (navigator *Navigator) ResetNavigator() {
 
 }
 
-// Parse parse nav file of given map
+// Parse parse nav file of a  given map
 func (navigator *Navigator) Parse(mapName string) error {
 	var err error
 	navMeshName := fmt.Sprintf("%s.nav", mapName)

@@ -5,6 +5,9 @@ import (
 	logging "github.com/sirupsen/logrus"
 )
 
+// Event handlers for checking whether a round is valid or not in the first parsing stage
+
+// handleCheckKill check whether a kill event is valid. If valid schedule related pre/post event checkers.
 func (analyser *Analyser) handleCheckKill(e events.Kill, tick int) {
 
 	// get player pointers

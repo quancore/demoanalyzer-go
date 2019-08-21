@@ -19,10 +19,12 @@ round_print = true
 mapnameAlias = { cobblestone = "cbble" }
 
 [test]
+# the directory path of all working demo files
 demofile_path = "/home/baran/Desktop/demo_files/working_demos"
 log_prefix = "log"
 log_level = "info"
 output_prefix = "stat"
+# increasing workers can lead to memory issues
 concurrent_worker = 1
 stdout = false
 

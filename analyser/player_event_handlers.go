@@ -12,7 +12,7 @@ import (
 // all event handlers for player triggered events
 
 // dispatchPlayerEvents common function to handle a player event
-// usefull for common checks for all events
+// useful for common checks for all events
 // used for second time parsing
 func (analyser *Analyser) dispatchPlayerEvents(e interface{}) {
 	// set event happened to true for this round
@@ -23,6 +23,9 @@ func (analyser *Analyser) dispatchPlayerEvents(e interface{}) {
 	if err {
 		return
 	}
+
+	// You can add your common event checkers to here
+
 	// it is nearly impossible to a player event can happen at the same
 	// time with an round start or end.It is much common to be a server event
 	// like killing all players at the same time for a game reset

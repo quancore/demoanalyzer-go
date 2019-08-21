@@ -1,3 +1,4 @@
+// Package common includes common functionality and util methods.
 package common
 
 import (

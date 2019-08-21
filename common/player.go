@@ -19,6 +19,7 @@ const (
 )
 
 // PPlayer is an abstraction struct on top of parser player struct.
+// It includes all player level info in its struct for a player.
 type PPlayer struct {
 	// base struct added in composition
 	*player.Player

@@ -9,6 +9,8 @@ import (
 )
 
 // registerNetMessageHandlers register net message handlers
+// In this method, we are getting match related variable values like start money for each round
+// or number of rounds for overtime etc.
 func (analyser *Analyser) registerNetMessageHandlers() {
 	// Register handler for net messages updates
 	analyser.parser.RegisterNetMessageHandler(func(m *msg.CNETMsg_SetConVar) {
@@ -27,6 +29,7 @@ func (analyser *Analyser) registerNetMessageHandlers() {
 	})
 }
 
+// registerMatchEventHandlers register event handlers of match events
 func (analyser *Analyser) registerMatchEventHandlers() {
 	// *********** match events ********************
 	// this event is not triggered by the actions of players
@@ -125,6 +128,8 @@ func (analyser *Analyser) registerPlayerEventHandlers() {
 
 // ########## first parse related  handlers #########################################################
 // registerFirstPlayerEventHandlers register handlers for each needed events in the first parse session
+// This events mostly used for whether a round is a valid one or not, so this event handlers do not records
+// statistics of players.
 func (analyser *Analyser) registerFirstPlayerEventHandlers() {
 	// it is used for indicating a player has been hurt in a round for the first parse
 	// therefore it is registered in the first parsing
@@ -149,6 +154,7 @@ func (analyser *Analyser) registerFirstPlayerEventHandlers() {
 	}
 }
 
+// registerScheduler register event scheduler
 func (analyser *Analyser) registerScheduler() {
 	analyser.parser.RegisterEventHandler(func(e events.TickDone) {
 
