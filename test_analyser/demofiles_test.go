@@ -2,8 +2,10 @@ package testAnalyser
 
 import (
 	"fmt"
+	"go/build"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -48,6 +50,13 @@ func init() {
 
 //TestDemofiles test correctness of analyser with demofiles
 func TestDemofiles(t *testing.T) {
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		gopath = build.Default.GOPATH
+	}
+	log.Info(fmt.Sprintf("gopath: %s", gopath))
+
+	demofilePath = path.Join(gopath, demofilePath)
 
 	// first read all demofiles from dir
 	files, err := ioutil.ReadDir(demofilePath)
@@ -60,7 +69,7 @@ func TestDemofiles(t *testing.T) {
 	var tasks []*Task
 
 	for _, file := range files {
-		if !file.IsDir() {
+		if !file.IsDir() && filepath.Ext(file.Name()) == ".dem" {
 			filename := file.Name()
 			filepath := filepath.Join(demofilePath, filename)
 			tasks = append(tasks, NewTask(func() error {
