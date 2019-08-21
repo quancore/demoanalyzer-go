@@ -14,4 +14,4 @@ before_script:
 script:
 - go build -o ./bin/demoanalyzer-go
 - cd test_analyser/
-- go test -v -short -timeout 9000s> out.log
+- go test -v -short -timeout 9000s
