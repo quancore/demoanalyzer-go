@@ -36,7 +36,7 @@ Example command to build:
 `go build -o ./bin/demoanalyzer-go`
 
 Example command to print all events using underlying parser
-`go run -tags debugdemoinfocs examples/print-events/print_events.go -demo /paath/to/demofile > out.log`
+`go run -tags debugdemoinfocs examples/print-events/print_events.go -demo /path/to/demofile > out.log`
 
 Example command to run test cases:
 `cd test_analyser/`
